@@ -1,0 +1,105 @@
+{
+  "source": "https://github.com/untitleduico/untitledui-nextjs-starter-kit",
+  "clone": "git clone https://github.com/untitleduico/untitledui-nextjs-starter-kit.git component-library",
+  "description": "Component library is the Untitled UI Next.js starter kit. Imports use @/components/... from the cloned repo.",
+  "components": [
+    {
+      "name": "Button",
+      "path": "base/buttons/button.tsx",
+      "import": "import { Button } from '@/components/base/buttons/button'",
+      "description": "Primary, secondary, outline, ghost. Uses React Aria. Variants: primary, secondary, tertiary, link.",
+      "props": ["children", "variant?", "size?", "disabled?", "onPress?", "className?"]
+    },
+    {
+      "name": "Input",
+      "path": "base/input/input.tsx",
+      "import": "import { Input } from '@/components/base/input/input'",
+      "description": "Text input with label, hint, error. Use with Label. Types: text, email, password, number.",
+      "props": ["label?", "placeholder?", "error?", "disabled?", "type?", "value?", "onChange?"]
+    },
+    {
+      "name": "Label",
+      "path": "base/input/label.tsx",
+      "import": "import { Label } from '@/components/base/input/label'",
+      "description": "Form label for inputs.",
+      "props": ["children", "htmlFor?", "required?"]
+    },
+    {
+      "name": "Avatar",
+      "path": "base/avatar/avatar.tsx",
+      "import": "import { Avatar } from '@/components/base/avatar/avatar'",
+      "description": "User avatar with image or initials. Sizes: xs, sm, md, lg, xl.",
+      "props": ["src?", "alt?", "name?", "size?"]
+    },
+    {
+      "name": "Badges",
+      "path": "base/badges/badges.tsx",
+      "import": "import { Badge } from '@/components/base/badges/badges'",
+      "description": "Badge/pill for status or labels. Variants: gray, success, error, warning.",
+      "props": ["children", "variant?", "size?", "dot?"]
+    },
+    {
+      "name": "Checkbox",
+      "path": "base/checkbox/checkbox.tsx",
+      "import": "import { Checkbox } from '@/components/base/checkbox/checkbox'",
+      "description": "Checkbox with label. Uses React Aria.",
+      "props": ["children", "isSelected?", "onChange?", "disabled?"]
+    },
+    {
+      "name": "Select",
+      "path": "base/select/select.tsx",
+      "import": "import { Select } from '@/components/base/select/select'",
+      "description": "Dropdown select. Use with SelectItem.",
+      "props": ["children", "placeholder?", "selectedKey?", "onSelectionChange?", "disabled?"]
+    },
+    {
+      "name": "Dropdown",
+      "path": "base/dropdown/dropdown.tsx",
+      "import": "import { Dropdown } from '@/components/base/dropdown/dropdown'",
+      "description": "Dropdown menu with trigger and items.",
+      "props": ["children", "trigger", "align?", "disabled?"]
+    },
+    {
+      "name": "Modal",
+      "path": "application/modals/modal.tsx",
+      "import": "import { Modal } from '@/components/application/modals/modal'",
+      "description": "Modal dialog.",
+      "props": ["children", "isOpen?", "onOpenChange?", "title?"]
+    },
+    {
+      "name": "Tabs",
+      "path": "application/tabs/tabs.tsx",
+      "import": "import { Tabs } from '@/components/application/tabs/tabs'",
+      "description": "Tab navigation.",
+      "props": ["children", "defaultKey?", "onChange?"]
+    },
+    {
+      "name": "Table",
+      "path": "application/table/table.tsx",
+      "import": "import { Table } from '@/components/application/table/table'",
+      "description": "Data table with columns and rows.",
+      "props": ["columns", "data", "keyExtractor?"]
+    },
+    {
+      "name": "EmptyState",
+      "path": "application/empty-state/empty-state.tsx",
+      "import": "import { EmptyState } from '@/components/application/empty-state/empty-state'",
+      "description": "Empty state with illustration and CTA.",
+      "props": ["title", "description?", "action?", "image?"]
+    },
+    {
+      "name": "ButtonGroup",
+      "path": "base/button-group/button-group.tsx",
+      "import": "import { ButtonGroup } from '@/components/base/button-group/button-group'",
+      "description": "Group of buttons together.",
+      "props": ["children", "variant?", "size?"]
+    },
+    {
+      "name": "InputGroup",
+      "path": "base/input/input-group.tsx",
+      "import": "import { InputGroup } from '@/components/base/input/input-group'",
+      "description": "Input with leading/trailing addons.",
+      "props": ["children", "leadingAddon?", "trailingAddon?"]
+    }
+  ]
+}

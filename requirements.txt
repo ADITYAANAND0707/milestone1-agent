@@ -1,0 +1,6 @@
+# MCP server + HTTP transport (Claude Code uses HTTP)
+mcp[cli]>=1.25.0
+# Optional: for generate_ui tool (server-side LLM call)
+anthropic>=0.39.0
+# Load .env for ANTHROPIC_API_KEY
+python-dotenv>=1.0.0

@@ -1,0 +1,7 @@
+# Run: docker compose up --build
+# Then: claude mcp add --transport http design-system http://127.0.0.1:3845/mcp
+services:
+  mcp-server:
+    build: .
+    ports:
+      - "3845:8000"

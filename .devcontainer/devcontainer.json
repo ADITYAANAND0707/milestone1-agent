@@ -1,0 +1,16 @@
+{
+  "name": "Milestone 1 — Design System Agent",
+  "image": "mcr.microsoft.com/devcontainers/python:3",
+  "postCreateCommand": "pip install -r requirements.txt",
+  "forwardPorts": [3851],
+  "portsAttributes": {
+    "3851": {
+      "label": "Chatbot",
+      "onAutoForward": "openBrowser"
+    }
+  },
+  "postStartCommand": "cd chatbot && python server.py",
+  "remoteEnv": {
+    "ANTHROPIC_API_KEY": "${localEnv:ANTHROPIC_API_KEY}"
+  }
+}
