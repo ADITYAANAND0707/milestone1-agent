@@ -225,3 +225,70 @@ REDIS_URL=redis://localhost:6379/0
 3. **Phase 3:** Add generated_code archival and user_preferences
 4. **Phase 4:** Add LTM with semantic search (requires embeddings)
 5. **Phase 5:** Add Redis for STM caching and session management
+6. **Phase 6:** Deploy to Ctrlagent Maker platform as External SoR (see below)
+
+---
+
+## Ctrlagent Maker Platform — External SoR Integration
+
+### Maker 0.9 Architecture (Decoupled)
+
+In Maker 0.9, the **System of Record (SoR) is created externally** and connected to agents through Integrations → Endpoints → Tools. Our database serves as the External SoR.
+
+### Recommended: Supabase as SoR
+
+Supabase is the recommended approach because it:
+- Runs on PostgreSQL (same schema we've designed above)
+- Auto-exposes REST APIs for all tables (no extra backend needed)
+- Provides API Key + Base URL ready for Maker integration
+- Works with Maker's cURL-based tool creation
+
+### Setup Steps
+
+1. **Create Supabase project** (company or free account)
+2. **Create tables** using the DDL from the schema above (conversations, messages, generated_code, etc.)
+3. **Seed sample data** using the SQL Editor
+4. **Test APIs in Postman** — Supabase auto-generates CRUD endpoints:
+   - `GET /rest/v1/conversations?select=*` — list conversations
+   - `POST /rest/v1/messages` — create message
+   - `GET /rest/v1/generated_code?select=*&conversation_id=eq.{id}` — get code by conversation
+5. **Export as cURL** — each tested API becomes a Maker tool
+
+### Mapping Tables to Maker Tools
+
+| Supabase Table | Maker Tool Name | API Method | Purpose |
+|----------------|----------------|------------|---------|
+| `conversations` | `ListConversations` | `GET /rest/v1/conversations` | Fetch user's chat sessions |
+| `conversations` | `CreateConversation` | `POST /rest/v1/conversations` | Start new chat session |
+| `messages` | `GetMessages` | `GET /rest/v1/messages?conversation_id=eq.{id}` | Load chat history |
+| `messages` | `SaveMessage` | `POST /rest/v1/messages` | Store message |
+| `generated_code` | `GetGeneratedCode` | `GET /rest/v1/generated_code` | Browse code archive |
+| `generated_code` | `SaveGeneratedCode` | `POST /rest/v1/generated_code` | Archive generated component |
+| `user_preferences` | `GetPreferences` | `GET /rest/v1/user_preferences?user_id=eq.{id}` | Load user settings |
+
+### Maker Integration Example
+
+In Maker compose bar:
+```
+"Create a tool using this cURL"
+```
+
+Then paste:
+```bash
+curl --location 'https://your-project.supabase.co/rest/v1/conversations?select=*' \
+--header 'apikey: your_supabase_api_key' \
+--header 'Authorization: Bearer your_supabase_api_key'
+```
+
+Maker will automatically:
+1. Create an **Integration** (Supabase connection)
+2. Create an **Endpoint** (the API route)
+3. Create a **Tool** (ListConversations) and attach it to the agent
+
+### Environment Variables for Supabase
+
+```env
+# Add to .env for Supabase SoR
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_API_KEY=your_supabase_api_key
+```

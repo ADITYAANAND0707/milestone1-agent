@@ -130,3 +130,124 @@ Schema migrations managed by **Alembic** — version-controlled, reversible chan
 | Local | `cd chatbot && python server.py` → http://localhost:3851 |
 | GitHub Codespaces | Auto-configured via `.devcontainer/devcontainer.json` |
 | Docker | `docker-compose up` (MCP server) |
+| **Ctrlagent Maker** | **Future** — Deploy as an App + Agent on the Metafore AI platform |
+
+---
+
+## Future: Ctrlagent Maker Platform Deployment
+
+### What is Maker?
+
+Maker (v0.9) is an **agentic app generation co-pilot** on the Ctrlagent platform. It allows you to create Apps, Agents, Tools, and Dashboards — either from scratch or from a BRD (Business Requirements Document).
+
+### Key Maker Concepts
+
+| Concept | What It Is | Maps To (Our System) |
+|---------|-----------|---------------------|
+| **App** | Container for agents and dashboards | The "Design System Agent" application |
+| **Agent** | AI agent with purpose, responsibilities, policies | Our Chatbot — generates UI from prompts |
+| **Integration** | Connection to an external API (base URL + auth) | Our Python backend server endpoints |
+| **Endpoint** | Specific API route within an Integration | `/api/chat/stream`, `/api/generate`, `/api/preview`, etc. |
+| **Tool** | Agent capability created from an Endpoint | Each API action the agent can perform |
+| **Pulse** | Role-based dashboard | Dashboard UI (port 3850) — evolves into a Pulse dashboard |
+| **System of Record (SoR)** | Where data lives | External SoR — our PostgreSQL database (or Supabase) |
+
+### Maker 0.9 Architecture (Decoupled)
+
+In Maker 0.9, the **System of Record and APIs are created externally** and then connected to agents through Integrations → Endpoints → Tools:
+
+```
+┌─────────────────────────────────────────────────────┐
+│              CTRLAGENT MAKER PLATFORM                │
+│                                                     │
+│   ┌──────────────┐    ┌──────────────────────────┐  │
+│   │  Banking App  │    │  Design System Agent App │  │
+│   └──────┬───────┘    └──────────┬───────────────┘  │
+│          │                       │                  │
+│   ┌──────▼───────────────────────▼───────────────┐  │
+│   │              AGENTS                          │  │
+│   │  Retail Banking Agent | UI Generation Agent  │  │
+│   └──────────────────┬───────────────────────────┘  │
+│                      │                              │
+│   ┌──────────────────▼───────────────────────────┐  │
+│   │              TOOLS                           │  │
+│   │  (Created from Integrations + Endpoints)     │  │
+│   │  ChatWithAgent | GenerateUI | PreviewCode    │  │
+│   │  GenerateVariants | GetCatalog               │  │
+│   └──────────────────┬───────────────────────────┘  │
+│                      │                              │
+│   ┌──────────────────▼───────────────────────────┐  │
+│   │          PULSE DASHBOARDS                    │  │
+│   │  Role-based views (Developer, Designer, PM)  │  │
+│   └──────────────────────────────────────────────┘  │
+└──────────────────────┬──────────────────────────────┘
+                       │
+          Integrations (HTTP/REST)
+                       │
+┌──────────────────────▼──────────────────────────────┐
+│           EXTERNAL SYSTEM OF RECORD                 │
+│                                                     │
+│   PostgreSQL / Supabase                             │
+│   Tables: conversations, messages, generated_code   │
+│   APIs tested in Postman → cURL → Maker Tools      │
+└─────────────────────────────────────────────────────┘
+```
+
+### How Our System Maps to Maker
+
+#### Step 1: Set Up External SoR (Supabase / PostgreSQL)
+
+Create the database tables externally (see `docs/database-plan.md`):
+- `conversations`, `messages`, `generated_code`, `user_preferences`
+- Expose REST APIs via Supabase (auto-generated CRUD)
+- Test APIs in Postman, export as cURL commands
+
+#### Step 2: Create the App + Agent in Maker
+
+Prompt Maker:
+> "Create a Design System Agent app with a UI Generation agent. The agent generates React UI components from natural language prompts using a design system catalog and the Claude API. It supports streaming chat, code generation, multi-variant generation, and live preview."
+
+#### Step 3: Create Integrations + Tools
+
+For each API endpoint, provide tested cURL to Maker:
+
+| Tool Name | Endpoint | cURL Source |
+|-----------|----------|-------------|
+| `ChatWithAgent` | `POST /api/chat/stream` | Streaming chat with conversation context |
+| `GenerateComponent` | `POST /api/generate` | Generate a single React component |
+| `GenerateVariants` | `POST /api/generate-variants` | Generate 2-3 style variants |
+| `PreviewCode` | `POST /api/preview` | Render code in sandboxed iframe |
+| `GetDesignCatalog` | `GET /api/catalog` | Fetch design tokens + components |
+| `HealthCheck` | `GET /api/health` | Verify API key and server status |
+
+**Recommended approach:** Use Maker's **one-step cURL method** — paste the tested cURL and Maker auto-creates Integration → Endpoint → Tool.
+
+#### Step 4: Deploy and Create Pulse Dashboards
+
+1. Type `Deploy` in Maker to publish
+2. Create role-based Pulse dashboards:
+
+| Role | Dashboard Content |
+|------|------------------|
+| **Developer** | Generated code history, component catalog, variant comparison |
+| **Designer** | Live previews, style variants, design token reference |
+| **Project Manager** | Usage analytics, component generation counts, conversation summaries |
+
+#### Step 5: Iterate
+
+Maker auto-saves changes. Deploy after every meaningful update:
+- After app + agent creation
+- After tool/integration creation
+- After dashboard creation
+
+### BRD Template for Maker Submission
+
+When ready to deploy to Maker, prepare a BRD with:
+
+1. **Executive Summary** — Design System Agent for UI generation
+2. **Users & Roles** — Developer, Designer, PM
+3. **Entities** — Internal SoR if needed (or external via Supabase)
+4. **Integrations** — Our backend API endpoints with cURL commands
+5. **Agent Definition** — Purpose, responsibilities, tools, guardrails
+6. **User Journeys** — "Generate a login form", "Compare 3 variants", etc.
+7. **Dashboards** — Pulse configs per role
