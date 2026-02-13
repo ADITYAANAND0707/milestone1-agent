@@ -60,6 +60,16 @@ def _load_project_context():
             pass
     return ""
 
+def _load_coding_guidelines():
+    """Load coding_guidelines.md content."""
+    guidelines_file = ROOT / "coding_guidelines.md"
+    if guidelines_file.exists():
+        try:
+            return guidelines_file.read_text(encoding="utf-8")
+        except Exception:
+            pass
+    return ""
+
 def _load_design_system():
     """Load design system catalog and tokens."""
     ds_dir = ROOT / "design_system"
@@ -78,12 +88,19 @@ def _load_design_system():
     return out
 
 def _build_system_prompt():
-    """Build the system prompt with full project context."""
+    """Build the system prompt with full project context and coding guidelines."""
     project_ctx = _load_project_context()
+    coding_guidelines = _load_coding_guidelines()
     ds = _load_design_system()
     tokens_str = json.dumps(ds.get("tokens", {}), indent=2)[:2000]
     comps = ds.get("catalog", {}).get("components", [])[:25]
     comps_str = json.dumps(comps, indent=2)[:3000]
+
+    guidelines_section = f"""
+
+## Coding Guidelines
+{coding_guidelines}
+""" if coding_guidelines else ""
 
     return f"""You are an expert AI assistant for the "Milestone 1 — Design System Agent" project. You have comprehensive knowledge of the entire project, its architecture, codebase, and design system.
 
@@ -96,6 +113,7 @@ def _build_system_prompt():
 
 ### Component Catalog (available components):
 {comps_str}
+{guidelines_section}
 
 ## Your Capabilities & Personality
 - You are friendly, helpful, and VERY concise
@@ -573,6 +591,7 @@ if __name__ == "__main__":
     key_ok = bool(os.environ.get("ANTHROPIC_API_KEY", "").strip())
     print(f"  API key:       {'Loaded' if key_ok else 'NOT SET — add ANTHROPIC_API_KEY to .env'}")
     print(f"  Context:       PROJECT_CONTEXT.md {'found' if (ROOT / 'PROJECT_CONTEXT.md').exists() else 'NOT FOUND'}")
+    print(f"  Guidelines:    coding_guidelines.md {'found' if (ROOT / 'coding_guidelines.md').exists() else 'NOT FOUND'}")
     print()
 
     class ThreadedHTTPServer(ThreadingMixIn, HTTPServer):
