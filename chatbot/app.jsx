@@ -41,13 +41,21 @@
     let m;
     while ((m = re.exec(text)) !== null) {
       const code = m[1].trim();
-      if (code.length < 10) continue;
-      const runnable = /root\.render|createElement|React\.|return\s*\(|<\/?\w+|className=|className\s*=/i.test(code);
-      blocks.push({ code, runnable, len: code.length });
+      if (code.length < 30) continue;
+      const hasRootRender = /root\.render/.test(code);
+      const hasComponent = /function\s+[A-Z]|const\s+[A-Z]\w*\s*=/.test(code);
+      const hasJSX = /className=|className\s*=|<\/?\w+/.test(code);
+      // Score: strongly prefer blocks that look like complete runnable components
+      let score = code.length;
+      if (hasRootRender) score += 50000;
+      if (hasComponent) score += 30000;
+      if (hasRootRender && hasComponent) score += 20000;
+      if (hasJSX) score += 5000;
+      blocks.push({ code, score, hasRootRender, hasComponent });
     }
     if (blocks.length === 0) return null;
-    const best = blocks.filter(b => b.runnable).sort((a, b) => b.len - a.len)[0];
-    return (best || blocks.sort((a, b) => b.len - a.len)[0]).code;
+    blocks.sort((a, b) => b.score - a.score);
+    return blocks[0].code;
   }
 
   // Extract ALL runnable code blocks (for variants)
@@ -57,9 +65,10 @@
     let m;
     while ((m = re.exec(text)) !== null) {
       const code = m[1].trim();
-      if (code.length < 10) continue;
-      const runnable = /root\.render|createElement|React\./i.test(code);
-      if (runnable) blocks.push(code);
+      if (code.length < 30) continue;
+      const hasRootRender = /root\.render/.test(code);
+      const hasComponent = /function\s+[A-Z]|const\s+[A-Z]\w*\s*=/.test(code);
+      if (hasRootRender && hasComponent) blocks.push(code);
     }
     return blocks;
   }
@@ -143,8 +152,8 @@
 
   configureMarked();
 
-  // ── Streaming API ──
-  async function streamChat(message, history, onChunk, onDone, onError, signal) {
+  // ── Streaming API (supports status + thinking events from multi-agent system) ──
+  async function streamChat(message, history, onChunk, onDone, onError, signal, onStatus, onThinking) {
     try {
       const response = await fetch('/api/chat/stream', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -166,6 +175,8 @@
             try {
               const parsed = JSON.parse(line.slice(6));
               if (parsed.type === 'chunk' && parsed.text) onChunk(parsed.text);
+              else if (parsed.type === 'thinking' && parsed.text && onThinking) onThinking(parsed.text);
+              else if (parsed.type === 'status' && parsed.text && onStatus) onStatus(parsed.text);
               else if (parsed.type === 'done') { onDone(); return; }
               else if (parsed.type === 'error') { onError(parsed.error || 'Unknown error'); return; }
             } catch {}
@@ -177,6 +188,63 @@
       if (err.name === 'AbortError') onDone();
       else onError(err.message || 'Network error');
     }
+  }
+
+  // ── Agent Pipeline Constants ──
+  const AGENT_STEPS = [
+    { id: 'classify', label: 'Classify', icon: '\uD83C\uDFAF' },
+    { id: 'discovery', label: 'Discovery', icon: '\uD83D\uDD0D' },
+    { id: 'generation', label: 'Generate', icon: '\u2699\uFE0F' },
+    { id: 'qa', label: 'QA Review', icon: '\u2705' },
+    { id: 'respond', label: 'Respond', icon: '\uD83D\uDCAC' },
+  ];
+
+  const STATUS_TO_STEP = {
+    "Analyzing your request...": "classify",
+    "Searching component library...": "discovery",
+    "Generating React code...": "generation",
+    "Reviewing code quality...": "qa",
+    "Fixing issues, regenerating...": "generation",
+    "Preparing response...": "respond",
+  };
+
+  function getAgentStates(activeStepId) {
+    if (!activeStepId) return AGENT_STEPS.map(s => ({ ...s, state: 'pending' }));
+    const activeIdx = AGENT_STEPS.findIndex(s => s.id === activeStepId);
+    return AGENT_STEPS.map((s, i) => ({
+      ...s,
+      state: i < activeIdx ? 'complete' : i === activeIdx ? 'active' : 'pending',
+    }));
+  }
+
+  // ── Agent Pipeline Visualization Component ──
+  function AgentPipeline({ activeStep, statusText, visible }) {
+    if (!visible) return null;
+    const states = getAgentStates(activeStep);
+
+    return e('div', { className: 'agent-pipeline' },
+      e('div', { className: 'agent-pipeline-label' },
+        e('span', { className: 'pipeline-dot' }),
+        'Multi-Agent Pipeline'),
+      e('div', { className: 'agent-pipeline-track' },
+        states.flatMap((step, i) => {
+          const node = e('div', { key: step.id, className: `agent-node ${step.state}` },
+            e('div', { className: 'agent-node-circle' },
+              step.state === 'complete' ? '\u2713'
+                : step.state === 'active' ? step.icon
+                : '\u25CB'),
+            e('div', { className: 'agent-node-label' }, step.label));
+          if (i < states.length - 1) {
+            const connState = states[i + 1].state === 'complete' || states[i + 1].state === 'active'
+              ? (states[i + 1].state === 'active' ? 'active' : 'complete')
+              : '';
+            return [node, e('div', { key: `conn-${i}`, className: `agent-connector ${connState}` })];
+          }
+          return [node];
+        })
+      ),
+      statusText && e('div', { className: 'agent-status-text', key: statusText }, statusText)
+    );
   }
 
   // ════════════════════════════════════════════════════════════
@@ -263,7 +331,7 @@
           conversations.length === 0 && e('div', { style: { padding: 14, color: 'var(--text-muted)', fontSize: 12, textAlign: 'center' } }, 'No conversations yet')
         ),
         e('div', { className: 'sidebar-footer' },
-          e('div', { className: 'sidebar-footer-info' }, 'Powered by ', e('span', null, 'Claude'), ' with project context'))
+          e('div', { className: 'sidebar-footer-info' }, 'Powered by ', e('span', null, '4-Agent LangGraph'), ' pipeline'))
       )
     );
   }
@@ -280,8 +348,8 @@
       e('div', { className: 'welcome-logo' },
         e('svg', { width: 24, height: 24, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round' },
           e('path', { d: 'M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z' }))),
-      e('h1', { className: 'welcome-title' }, 'Project Chatbot'),
-      e('p', { className: 'welcome-subtitle' }, 'Ask about architecture, design system, or generate UI. Previews appear inline; code is saved in the right panel.'),
+      e('h1', { className: 'welcome-title' }, 'Design System Agent'),
+      e('p', { className: 'welcome-subtitle' }, 'Multi-agent system: Orchestrator, Discovery, Generator & QA work together. Ask for UI components and watch the agents collaborate in real time.'),
       e('div', { className: 'suggestions-grid' },
         suggestions.map((s, i) => e('button', { key: i, className: 'suggestion-btn', onClick: () => onSuggestion(s.text) },
           s.icon, e('span', null, s.text))))
@@ -354,7 +422,7 @@
     const title = isMulti ? `${codes.length} Variants` : 'UI Preview';
 
     return e('div', { className: 'preview-modal-overlay', onClick: (ev) => { if (ev.target === ev.currentTarget) onClose(); } },
-      e('div', { className: 'preview-modal' },
+      e('div', { className: `preview-modal ${isMulti ? 'preview-modal--multi' : 'preview-modal--single'}` },
         // Toolbar
         e('div', { className: 'preview-modal-toolbar' },
           e('div', { className: 'preview-modal-title' }, title),
@@ -519,8 +587,36 @@
     );
   }
 
+  // ── Collapsible Thinking Bar (like Cursor's thinking indicator) ──
+  function ThinkingBar({ content, isActive }) {
+    const [expanded, setExpanded] = useState(false);
+    const ref = useRef(null);
+    if (!content) return null;
+
+    // Auto-scroll thinking content to bottom when active
+    useEffect(() => {
+      if (expanded && ref.current) {
+        ref.current.scrollTop = ref.current.scrollHeight;
+      }
+    }, [content, expanded]);
+
+    const lineCount = (content.match(/\n/g) || []).length + 1;
+    const charCount = content.length;
+    const summary = isActive ? 'Thinking...' : `Thought for ${lineCount} lines`;
+
+    return e('div', { className: `thinking-bar ${isActive ? 'active' : ''}` },
+      e('div', { className: 'thinking-bar-header', onClick: () => setExpanded(!expanded) },
+        e('span', { className: `thinking-dot ${isActive ? 'active' : ''}` }),
+        e('span', { className: 'thinking-label' }, summary),
+        e('span', { className: 'thinking-toggle' }, expanded ? '\u25B2' : '\u25BC')
+      ),
+      expanded && e('div', { ref, className: 'thinking-bar-content' },
+        e(MarkdownContent, { content }))
+    );
+  }
+
   // ── Single Message ──
-  function Message({ role, content, code, codes, variantLabels, bubbleText, isStreaming, onCopyCode }) {
+  function Message({ role, content, code, codes, variantLabels, bubbleText, thinkingContent, isStreaming, isThinking, onCopyCode }) {
     const isUser = role === 'user';
     const hasMultiple = !isStreaming && codes && codes.length > 1;
     const hasSingle = !isStreaming && !hasMultiple && code;
@@ -531,6 +627,7 @@
         isUser
           ? e('div', { className: 'msg-content' }, content)
           : e(React.Fragment, null,
+              thinkingContent && e(ThinkingBar, { content: thinkingContent, isActive: isThinking || false }),
               e(MarkdownContent, { content: bubbleText || content, isStreaming }),
               hasMultiple && e(MultiPreview, { codes, labels: variantLabels || [], onCopyCode }),
               hasSingle && e(InlinePreview, { code, onCopyCode }))
@@ -579,25 +676,60 @@
     );
   }
 
-  // ── Code Panel (right top) ──
-  function CodePanel({ codeFiles, selectedId, onSelect, onCopy }) {
+  // ── Code Panel (right top) — with folder grouping, context, delete ──
+  function CodePanel({ codeFiles, selectedId, onSelect, onCopy, onDelete, onClearAll }) {
     const selected = codeFiles.find(f => f.id === selectedId);
+
+    // Group files by conversation/folder
+    const groups = useMemo(() => {
+      const map = {};
+      for (const f of codeFiles) {
+        const folder = f.folder || 'Unsorted';
+        if (!map[folder]) map[folder] = [];
+        map[folder].push(f);
+      }
+      return map;
+    }, [codeFiles]);
+
+    const [collapsedFolders, setCollapsedFolders] = useState({});
+    const toggleFolder = (folder) => setCollapsedFolders(prev => ({ ...prev, [folder]: !prev[folder] }));
+
+    const folderNames = Object.keys(groups);
+
     return e('div', { className: 'code-panel' },
       e('div', { className: 'code-panel-header' },
         e('h3', null, 'Code Files'),
-        e('span', { className: 'code-count' }, codeFiles.length)),
+        e('div', { className: 'code-panel-header-actions' },
+          e('span', { className: 'code-count' }, codeFiles.length),
+          codeFiles.length > 0 && e('button', { className: 'code-clear-btn', onClick: onClearAll, title: 'Clear all files' }, 'Clear'))),
       e('div', { className: 'code-panel-body' },
         codeFiles.length === 0 && e('div', { className: 'code-panel-empty' }, 'Code from chat will appear here.'),
-        codeFiles.map(f => e('button', { key: f.id, className: `code-file-item ${f.id === selectedId ? 'active' : ''}`, onClick: () => onSelect(f.id) },
-          e('div', { className: 'code-file-icon' }, I.file),
-          e('div', { className: 'code-file-info' },
-            e('div', { className: 'code-file-name' }, f.label),
-            e('div', { className: 'code-file-time' }, f.time))
-        )),
+        folderNames.map(folder => {
+          const files = groups[folder];
+          const collapsed = collapsedFolders[folder];
+          return e('div', { key: folder, className: 'code-folder' },
+            e('div', { className: 'code-folder-header', onClick: () => toggleFolder(folder) },
+              e('span', { className: `code-folder-arrow ${collapsed ? 'collapsed' : ''}` }, '\u25BC'),
+              e('span', { className: 'code-folder-icon' }, '\uD83D\uDCC1'),
+              e('span', { className: 'code-folder-name' }, folder),
+              e('span', { className: 'code-folder-count' }, files.length)),
+            !collapsed && files.map(f => e('div', { key: f.id, className: `code-file-item ${f.id === selectedId ? 'active' : ''}`, onClick: () => onSelect(f.id) },
+              e('div', { className: 'code-file-icon' }, I.file),
+              e('div', { className: 'code-file-info' },
+                e('div', { className: 'code-file-name' }, f.label),
+                e('div', { className: 'code-file-meta' },
+                  e('span', null, f.time),
+                  f.context && e('span', { className: 'code-file-context' }, f.context))),
+              e('button', { className: 'code-file-delete', title: 'Delete', onClick: (ev) => { ev.stopPropagation(); onDelete(f.id); } }, '\u2715')
+            ))
+          );
+        }),
         selected && e('div', { className: 'code-viewer' },
           e('div', { className: 'code-viewer-header' },
             e('span', null, selected.label),
-            e('button', { onClick: () => onCopy(selected.code) }, 'Copy')),
+            e('div', { className: 'code-viewer-actions' },
+              e('button', { onClick: () => onCopy(selected.code) }, 'Copy'),
+              e('button', { onClick: () => onDelete(selected.id), className: 'code-viewer-delete' }, 'Delete'))),
           e('pre', null, selected.code))
       )
     );
@@ -759,9 +891,14 @@
     const [toasts, setToasts] = useState([]);
     const [codeFiles, setCodeFiles] = useState([]);
     const [selectedCodeId, setSelectedCodeId] = useState(null);
+    const [agentStep, setAgentStep] = useState(null);
+    const [agentStatusText, setAgentStatusText] = useState('');
+    const [pipelineVisible, setPipelineVisible] = useState(false);
+    const [thinkingContent, setThinkingContent] = useState('');
 
     const scrollRef = useRef(null);
     const abortRef = useRef(null);
+    const conversationsRef = useRef(conversations);
     const [rightPanelWidth, setRightPanelWidth] = useState(380);
     const resizingRef = useRef(false);
 
@@ -791,7 +928,7 @@
     const activeConv = useMemo(() => conversations.find(c => c.id === activeId) || null, [conversations, activeId]);
     const messages = activeConv ? activeConv.messages : [];
 
-    useEffect(() => { saveConversations(conversations); }, [conversations]);
+    useEffect(() => { conversationsRef.current = conversations; saveConversations(conversations); }, [conversations]);
     useEffect(() => { if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight; }, [messages, streamingContent, showTyping]);
 
     const addToast = useCallback((message, type) => {
@@ -801,11 +938,28 @@
     }, []);
     const dismissToast = useCallback((id) => setToasts(prev => prev.filter(t => t.id !== id)), []);
 
-    const addCodeFile = useCallback((label, code) => {
+    const addCodeFile = useCallback((label, code, folder, context) => {
       if (!code || !code.trim()) return;
       const id = generateId();
-      setCodeFiles(prev => [{ id, label: label || 'Code ' + (prev.length + 1), code: code.trim(), time: new Date().toLocaleTimeString() }, ...prev]);
+      setCodeFiles(prev => [{
+        id,
+        label: label || 'Code ' + (prev.length + 1),
+        code: code.trim(),
+        time: new Date().toLocaleTimeString(),
+        folder: folder || 'Components',
+        context: context || null,
+      }, ...prev]);
       setSelectedCodeId(id);
+    }, []);
+
+    const deleteCodeFile = useCallback((id) => {
+      setCodeFiles(prev => prev.filter(f => f.id !== id));
+      if (selectedCodeId === id) setSelectedCodeId(null);
+    }, [selectedCodeId]);
+
+    const clearAllCodeFiles = useCallback(() => {
+      setCodeFiles([]);
+      setSelectedCodeId(null);
     }, []);
 
     const copyCode = useCallback((code) => {
@@ -833,7 +987,7 @@
     }, []);
 
     // Process assistant message: extract code(s), strip from bubble, name files
-    const processAssistantMessage = useCallback((fullContent) => {
+    const processAssistantMessage = useCallback((fullContent, userMessage) => {
       const allBlocks = extractAllRunnableCodeBlocks(fullContent);
       const bestCode = extractBestRunnableCodeBlock(fullContent);
       let bubbleText = fullContent;
@@ -841,28 +995,42 @@
       let codes = allBlocks.length > 1 ? allBlocks : null;
       let variantLabels = null;
 
+      // Build context snippet from user message
+      const contextSnippet = userMessage
+        ? (userMessage.length > 40 ? userMessage.slice(0, 40) + '...' : userMessage)
+        : null;
+
       if (allBlocks.length > 1) {
         // Multiple variants detected
         variantLabels = extractVariantLabels(fullContent);
         bubbleText = textWithoutAnyCodeBlocks(fullContent);
         if (!bubbleText.replace(/\s/g, '')) bubbleText = `Here are ${allBlocks.length} variant previews:`;
-        // Save each variant as a named code file
+        // Save each variant as a named code file in a Variants folder
+        const folderName = 'Variants';
         allBlocks.forEach((c, i) => {
           const compName = extractComponentName(c);
           const label = variantLabels[i] || `Variant ${i + 1}`;
           const fileName = compName ? `${compName} — ${label}` : label;
-          addCodeFile(fileName, c);
+          addCodeFile(fileName, c, folderName, contextSnippet);
         });
       } else if (code) {
         bubbleText = textWithoutAnyCodeBlocks(fullContent);
         if (!bubbleText.replace(/\s/g, '')) bubbleText = "Here's a preview of the generated UI:";
-        // Extract a smart name from the component
         const compName = extractComponentName(code);
         const fileName = compName || 'Component ' + new Date().toLocaleTimeString();
-        addCodeFile(fileName, code);
+        addCodeFile(fileName, code, 'Components', contextSnippet);
       }
       return { bubbleText, code, codes, variantLabels };
     }, [addCodeFile]);
+
+    // Truncate long assistant messages for history to save tokens
+    function trimHistoryContent(content, maxLen) {
+      if (!content || content.length <= maxLen) return content;
+      const codeBlockRe = /```[\s\S]*?```/g;
+      let trimmed = content.replace(codeBlockRe, '\n[code block omitted]\n');
+      if (trimmed.length > maxLen) trimmed = trimmed.slice(0, maxLen) + '...';
+      return trimmed;
+    }
 
     // Send message
     const sendMessage = useCallback(async (text) => {
@@ -878,13 +1046,33 @@
         title: c.messages.length === 0 ? generateTitle(text) : c.title,
       }));
 
-      const currentConv = conversations.find(c => c.id === convId);
-      const history = (currentConv ? currentConv.messages : []).map(m => ({ role: m.role, content: m.content }));
+      // Use ref for latest state to avoid stale closure
+      const latestConvs = conversationsRef.current;
+      const currentConv = latestConvs.find(c => c.id === convId);
+      const allMsgs = currentConv ? currentConv.messages : [];
+      // Include the user message we just added
+      // IMPORTANT: Keep the LAST assistant message's full content (with code blocks)
+      // so the pipeline's _get_previous_code() can find the original component.
+      // Only trim OLDER assistant messages to save tokens.
+      const rawHistory = [...allMsgs, { role: 'user', content: text }].slice(-20);
+      let lastAssistantIdx = -1;
+      for (let i = rawHistory.length - 1; i >= 0; i--) {
+        if (rawHistory[i].role === 'assistant') { lastAssistantIdx = i; break; }
+      }
+      const history = rawHistory.map((m, i) => ({
+        role: m.role,
+        content: m.role === 'assistant' && i !== lastAssistantIdx
+          ? trimHistoryContent(m.content, 500)
+          : m.content,
+      }));
 
       setShowTyping(true); setStreamingContent(''); setIsStreaming(true);
+      setAgentStep(null); setAgentStatusText(''); setPipelineVisible(true);
+      setThinkingContent('');
       const controller = new AbortController();
       abortRef.current = controller;
       let fullContent = '';
+      let fullThinking = '';
       let firstChunk = true;
 
       await streamChat(text, history,
@@ -895,21 +1083,37 @@
         },
         () => {
           setIsStreaming(false); setShowTyping(false); setStreamingContent('');
+          setPipelineVisible(false); setAgentStep(null); setAgentStatusText('');
+          setThinkingContent('');
           if (fullContent) {
-            const { bubbleText, code, codes, variantLabels } = processAssistantMessage(fullContent);
+            const { bubbleText, code, codes, variantLabels } = processAssistantMessage(fullContent, text);
             updateConversation(convId, (c) => ({
-              messages: [...c.messages, { role: 'assistant', content: fullContent, bubbleText, code, codes, variantLabels }],
+              messages: [...c.messages, {
+                role: 'assistant', content: fullContent, bubbleText, code, codes, variantLabels,
+                thinkingContent: fullThinking || null,
+              }],
             }));
           }
         },
         (error) => {
           setIsStreaming(false); setShowTyping(false); setStreamingContent('');
+          setPipelineVisible(false); setAgentStep(null); setAgentStatusText('');
+          setThinkingContent('');
           updateConversation(convId, (c) => ({
             messages: [...c.messages, { role: 'assistant', content: `Error: ${error}`, bubbleText: `Sorry, an error occurred: ${error}`, code: null }],
           }));
           addToast(error, 'error');
         },
-        controller.signal
+        controller.signal,
+        (statusText) => {
+          const stepId = STATUS_TO_STEP[statusText] || null;
+          if (stepId) setAgentStep(stepId);
+          setAgentStatusText(statusText);
+        },
+        (thinkingChunk) => {
+          fullThinking += thinkingChunk;
+          setThinkingContent(fullThinking);
+        }
       );
     }, [activeId, conversations, updateConversation, addToast, processAssistantMessage]);
 
@@ -918,7 +1122,18 @@
     // Streaming message processing (live)
     const streamingCode = isStreaming && streamingContent ? extractBestRunnableCodeBlock(streamingContent) : null;
     const streamingBubble = isStreaming && streamingContent
-      ? (streamingCode ? textWithoutAnyCodeBlocks(streamingContent) : streamingContent)
+      ? (() => {
+          if (streamingCode) return textWithoutAnyCodeBlocks(streamingContent);
+          // Check for incomplete code block (odd number of ``` fences)
+          const fenceCount = (streamingContent.match(/```/g) || []).length;
+          if (fenceCount > 0 && fenceCount % 2 !== 0) {
+            // Last code fence is unclosed — strip it to avoid rendering raw code as text
+            const lastFence = streamingContent.lastIndexOf('```');
+            const textBefore = streamingContent.substring(0, lastFence).trim();
+            return textBefore || 'Generating code...';
+          }
+          return streamingContent;
+        })()
       : '';
 
     const showWelcome = !activeConv || messages.length === 0;
@@ -933,10 +1148,13 @@
         // Header
         e('div', { className: 'chat-header' },
           e('button', { className: 'sidebar-toggle-btn', title: 'Toggle sidebar', onClick: () => setSidebarOpen(p => !p) }, I.menu),
-          e('div', { className: 'header-title' }, 'Project Chatbot'),
-          e('span', { className: 'header-model-badge' }, 'Claude'),
+          e('div', { className: 'header-title' }, 'Design System Agent'),
+          e('span', { className: 'header-model-badge langgraph' }, '4 Agents'),
           e('button', { className: 'right-panel-toggle-btn', title: rightPanelOpen ? 'Hide panel' : 'Show panel',
             onClick: () => setRightPanelOpen(p => !p) }, I.panel)),
+
+        // Agent Pipeline (visible during multi-agent processing)
+        e(AgentPipeline, { activeStep: agentStep, statusText: agentStatusText, visible: pipelineVisible && isStreaming }),
 
         // Messages
         e('div', { className: 'messages-scroll', ref: scrollRef },
@@ -946,10 +1164,14 @@
                 messages.map((m, i) => e(Message, { key: `${activeId}-${i}`, role: m.role,
                   content: m.content, bubbleText: m.bubbleText, code: m.code,
                   codes: m.codes, variantLabels: m.variantLabels,
+                  thinkingContent: m.thinkingContent,
                   onCopyCode: copyCode })),
-                isStreaming && !showTyping && streamingContent && e(Message, { key: 'streaming',
-                  role: 'assistant', content: streamingContent, bubbleText: streamingBubble,
-                  code: null, isStreaming: true, onCopyCode: copyCode }),
+                isStreaming && !showTyping && (streamingContent || thinkingContent) && e(Message, { key: 'streaming',
+                  role: 'assistant', content: streamingContent || '',
+                  bubbleText: streamingContent ? streamingBubble : (thinkingContent ? '' : ''),
+                  code: null, isStreaming: true, isThinking: !!thinkingContent && !streamingContent,
+                  thinkingContent: thinkingContent || null,
+                  onCopyCode: copyCode }),
                 showTyping && e(TypingIndicator, { key: 'typing' }),
                 e('div', { style: { height: 16 } })
               )
@@ -965,7 +1187,7 @@
       // Right Panel
       e('div', { className: `right-panel ${rightPanelOpen ? '' : 'closed'}`,
         style: rightPanelOpen ? { width: rightPanelWidth, minWidth: rightPanelWidth } : undefined },
-        e(CodePanel, { codeFiles, selectedId: selectedCodeId, onSelect: setSelectedCodeId, onCopy: copyCode }),
+        e(CodePanel, { codeFiles, selectedId: selectedCodeId, onSelect: setSelectedCodeId, onCopy: copyCode, onDelete: deleteCodeFile, onClearAll: clearAllCodeFiles }),
         e(FeaturesPanel, { onSendToChat: sendMessage, isStreaming })
       ),
 

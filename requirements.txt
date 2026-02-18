@@ -1,6 +1,19 @@
-# MCP server + HTTP transport (Claude Code uses HTTP)
-mcp[cli]>=1.25.0
-# Optional: for generate_ui tool (server-side LLM call)
-anthropic>=0.39.0
-# Load .env for ANTHROPIC_API_KEY
+# Load .env for API keys
 python-dotenv>=1.0.0
+
+# ── OpenAI (powers ALL LLM calls) ──
+openai>=1.60.0
+
+# ── LangGraph Multi-Agent System ──
+langgraph>=0.4.0
+langchain-openai>=0.3.0
+langchain-anthropic>=0.3.0
+langchain-mcp-adapters>=0.1.0
+langchain-core>=0.3.0
+anthropic>=0.40.0
+
+# ── MCP server + HTTP transport ──
+mcp[cli]>=1.25.0
+
+# ── RAG (vector search over design system) ──
+numpy>=1.24.0

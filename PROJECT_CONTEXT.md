@@ -1,115 +1,221 @@
 # Full Project Context — Milestone 1 Design System Agent
 
-**Use this file when handing off to a different Cursor agent or new session.** It describes the project, structure, how to run it, and important behavior so work can continue without re-discovering the codebase.
+**Use this file when starting a new Cursor chat or handing off to another agent.** It describes the full project state, architecture, how to run it, and all important decisions so work can continue seamlessly.
 
 ---
 
 ## 1. What This Project Is
 
-- **Name:** Milestone 1 — Design System Agent  
-- **Purpose:** Generate UI (React/JSX) from prompts using a **local design system** (catalog + tokens) and the **Claude API**. No MCP server required for the dashboard or chatbot.
-- **Two applications:**
-  1. **Dashboard** (port 3850) — Original single-page app: catalog browser, simple chat, generate + variants
-  2. **Chatbot** (port 3851) — **PRIMARY** — ChatGPT-style agent with:
-     - **Streaming chat** with full conversation memory (SSE)
-     - **Inline live UI previews** in chat messages (iframe)
-     - **Expandable fullscreen preview modal** with Desktop/Tablet/Mobile viewport switcher
-     - **Multi-variant side-by-side previews** (2-3 variants in a grid, each expandable individually or all together)
-     - **Quick Actions panel** — one-click shortcut buttons (Style: Minimal/Bold/Playful/Elegant/Corporate, Modify: Dark Mode/Responsive/Animation/Simplify, Enhance: Loading States/Error Handling/Hover Effects/etc.) — all go through chat with full conversation context
-     - **Variants panel** — pick count (2/3) + style keywords → generates in chat with side-by-side preview
-     - **Catalog panel** — browse design system components, click to generate in chat
-     - **Code Files panel** — auto-saved with component names, viewable and copyable
-     - **Resizable panels** — draggable resize handle between chat and right panel (260px–700px)
-     - **Conversation history** — persisted in localStorage, organized by Today/Yesterday/Older
+- **Name:** Milestone 1 — Design System Agent
+- **Purpose:** Multi-agent system that generates production-quality React/JSX UI components from natural language prompts, using the Untitled UI design system.
+- **Architecture:** 4-agent LangGraph pipeline (Orchestrator → Discovery → Generator → QA) with 6 tools + RAG
+- **LLM:** Claude Sonnet (code generation via Anthropic) + GPT-4o-mini (classification, discovery, chat via OpenAI) + OpenAI Embeddings (RAG only)
+- **Frontend:** ChatGPT-style chatbot with real-time agent pipeline visualization + collapsible thinking bar
 
 ---
 
-## 2. Tech Stack
+## 2. Multi-Agent System (LangGraph)
+
+### 4 Agents (OPTIMIZED — minimal LLM calls)
+
+| Agent | File | Model | Role | Speed |
+|-------|------|-------|------|-------|
+| **Orchestrator** | `agent/orchestrator.py` | GPT-4o-mini (skipped if pre-classified) | Classifies request → routes to sub-agents → manages QA retry loop | ~0-1s |
+| **Discovery** | `agent/discovery.py` | GPT-4o-mini | Single LLM call with pre-loaded catalog, returns Tailwind patterns | ~1-2s |
+| **Generator** | `agent/generator.py` | Claude Sonnet (Anthropic) | Single LLM call, writes complete React/JSX code with Untitled UI patterns | ~10-15s |
+| **QA Reviewer** | `agent/reviewer.py` + inline | Rule-based (no LLM) | Calls verify_quality + check_accessibility directly | ~0.1s |
+
+**Key optimizations:**
+- Pre-classification in `chatbot/server.py` does full intent classification (generate/discover/review/chat) in one GPT-4o-mini call, then passes the result to the pipeline so `classify_node` **skips its LLM call entirely**.
+- Discovery is a single GPT-4o-mini call with pre-loaded catalog. QA is pure regex — zero LLM calls.
+- Generator prompt includes **exact Untitled UI Tailwind patterns** for buttons, cards, tables, badges, avatars, inputs, tabs, modals, toggles, typography, and layout.
+
+### 6 Tools
+
+| Tool | File | Type | Purpose |
+|------|------|------|---------|
+| `list_components` | `agent/tools.py` | MCP-equivalent | Lists all 24 components from catalog.json |
+| `get_component_spec` | `agent/tools.py` | MCP-equivalent | Gets full spec + Tailwind patterns for one component |
+| `get_design_tokens` | `agent/tools.py` | MCP-equivalent | Gets colors, typography, spacing, shadows from tokens.json |
+| `preview_component` | `agent/tools.py` | Custom | Saves code as preview.html (React+Babel+Tailwind sandbox) |
+| `verify_quality` | `agent/tools.py` | Custom | Rule-based: PascalCase, Tailwind, no imports, Untitled UI compliance |
+| `check_accessibility` | `agent/tools.py` | Custom | Rule-based: semantic HTML, aria-labels, focus states, contrast |
+
+### RAG System
+
+| Component | File | Details |
+|-----------|------|---------|
+| **RAG Module** | `agent/rag.py` | In-memory vector store with OpenAI text-embedding-3-small |
+| **Index** | 56 chunks | 24 components + 6 token categories + ~26 doc sections |
+| **Cache** | `design_system/.rag_cache/` | .npy embeddings cached to disk, auto-rebuilds on file changes |
+| **Injection** | 2 points | `chatbot/server.py` (_handle_direct_chat) + `agent/orchestrator.py` (respond_node chat path) |
+
+### Pipeline Flows
+
+```
+"generate" request:  Pre-classify(GPT-4o-mini) → [Pipeline: Classify(skip) → Discovery(GPT-4o-mini) → Generation(Claude Sonnet) → QA(rule-based) → Respond]
+"discover" request:  Pre-classify(GPT-4o-mini) → [Pipeline: Classify(skip) → Discovery(GPT-4o-mini) → Respond]
+"review" request:    Pre-classify(GPT-4o-mini) → [Pipeline: Classify(skip) → QA(rule-based) → Respond]
+"chat" request:      Pre-classify(GPT-4o-mini) → Direct GPT-4o-mini + RAG (no pipeline)
+```
+
+### Smart Routing (Pre-Classification) — OPTIMIZED
+
+`chatbot/server.py` runs `_fast_classify()` using GPT-4o-mini which does **full classification** in one call:
+- Returns `"generate"`, `"discover"`, `"review"`, or `"chat"` (not just "pipeline"/"chat")
+- **"chat"** → Direct GPT-4o-mini response with RAG context (fast, cheap, no pipeline)
+- **"generate"/"discover"/"review"** → Passed as `workflow` param to pipeline, so `classify_node` **skips its LLM call**
+
+This eliminates a redundant ~1-2s LLM call that the old system made.
+
+### State Shape (OrchestratorState)
+
+```python
+{
+    "messages": [...],          # LangChain message history
+    "workflow": "generate",     # Pre-classified by chatbot/server.py OR set by classify_node
+    "user_request": "...",      # exact user message (stored by classify node)
+    "discovery_output": "...",  # components + Tailwind patterns
+    "generated_code": "...",    # React/JSX code from generator
+    "qa_result": "...",         # PASS/FAIL verdict from QA
+    "retry_count": 0,           # QA retry counter (max 2)
+}
+```
+
+### SSE Event Types (agent/server.py → frontend)
+
+```json
+{"type": "status", "text": "Analyzing your request..."}
+{"type": "status", "text": "Searching component library..."}
+{"type": "status", "text": "Generating React code..."}
+{"type": "status", "text": "Reviewing code quality..."}
+{"type": "status", "text": "Preparing response..."}
+{"type": "thinking", "text": "discovery/generation tokens..."}
+{"type": "chunk", "text": "final response content..."}
+{"type": "done"}
+{"type": "error", "error": "message"}
+```
+
+**Key distinction:** `thinking` events carry discovery/generation LLM tokens (hidden in collapsible bar). `chunk` events carry only the final formatted response (shown in chat). This keeps the chat clean.
+
+Pipeline timing is logged to server console: `[pipeline] <node> started/finished at Xs`
+
+---
+
+## 3. Tech Stack
 
 | Layer | Technology | Notes |
 |-------|-----------|-------|
-| Backend | Python 3, `http.server` + `ThreadingMixIn` | Multi-threaded for concurrent requests |
-| Frontend | React 18 (UMD from CDN), Babel standalone | No build step |
-| Markdown | marked.js + highlight.js | GitHub Dark theme syntax highlighting |
-| AI | Anthropic Claude API (`claude-sonnet-4-20250514`) | Streaming SSE for chat |
-| Preview | iframe: React + Babel + Tailwind (CDN) | Sandboxed rendering |
-| Persistence | localStorage | Conversation history |
-| API key | `ANTHROPIC_API_KEY` from `.env` | Loaded by python-dotenv |
-| Design data | `design_system/catalog.json`, `tokens.json` | Injected into Claude system prompt |
+| Code Generation LLM | **Claude Sonnet (Anthropic)** | `claude-sonnet-4-20250514` — used in generator + generate_code + generate_variants |
+| Classification/Chat/Discovery LLM | **OpenAI GPT-4o-mini** | Fast, cheap — classify, discovery, direct chat, respond chat path |
+| Embeddings | **OpenAI text-embedding-3-small** | RAG vector embeddings for design system knowledge |
+| RAG Store | **numpy** (in-memory + disk cache) | Cosine similarity search, ~56 chunks, <100ms queries |
+| Agent Framework | **LangGraph** + LangChain | StateGraph orchestrator + direct LLM calls (no ReAct loops) |
+| Backend | Python 3, `http.server` + `ThreadingMixIn` | Threaded for concurrent requests |
+| Frontend | React 18 (UMD CDN), Babel standalone | No build step |
+| Markdown | marked.js + highlight.js | GitHub Dark syntax highlighting |
+| Preview | iframe: React + Babel + Tailwind (CDN) | Sandboxed rendering with Untitled UI Tailwind config |
+| Persistence | localStorage | Conversations (client-side only) |
+| API Keys | `OPENAI_API_KEY` + `ANTHROPIC_API_KEY` from `.env` | Loaded by python-dotenv |
+| Design Data | `design_system/catalog.json` + `tokens.json` | Read by tools, RAG, and discovery |
+| Environment | `USE_LANGGRAPH=true` in `.env` | Toggles multi-agent vs direct streaming mode |
 
 ---
 
-## 3. How to Run
+## 4. How to Run
 
-### Chatbot (primary — recommended)
-```
-cd milestone1-agent/chatbot
-python server.py
-→ Open http://127.0.0.1:3851
-```
-
-### Dashboard (original)
-```
-cd milestone1-agent/dashboard
-python server.py
-→ Open http://127.0.0.1:3850
+```bash
+cd milestone1-agent
+pip install -r requirements.txt       # openai, anthropic, langgraph, langchain-*, numpy, etc.
+cd chatbot
+python server.py                       # → http://localhost:3851
 ```
 
-### Environment
-- Create `.env` in project root with: `ANTHROPIC_API_KEY=your_key_here`
-- Install deps: `pip install -r requirements.txt` (anthropic, python-dotenv)
+### Environment (.env in project root)
+
+```
+OPENAI_API_KEY=sk-proj-...
+ANTHROPIC_API_KEY=sk-ant-...
+USE_LANGGRAPH=true
+```
+
+- `OPENAI_API_KEY` — **Required.** Used for: embeddings (RAG), classification (GPT-4o-mini), discovery (GPT-4o-mini), chat responses
+- `ANTHROPIC_API_KEY` — **Required for code generation.** Used for: Claude Sonnet in generator, generate_code(), generate_variants(). Falls back to GPT-4o if missing
+- `USE_LANGGRAPH=true` → routes through the 4-agent LangGraph pipeline
+- `USE_LANGGRAPH=false` or unset → direct Claude/GPT streaming (fallback)
+
+### Windows: Kill old processes before restart
+
+```powershell
+netstat -ano | Select-String ":3851"
+taskkill /F /PID <pid>
+```
 
 ---
 
-## 4. Directory Structure
+## 5. Directory Structure
 
 ```
 milestone1-agent/
-├── .env                         # ANTHROPIC_API_KEY (gitignored)
-├── .env.example                 # Template
-├── PROJECT_CONTEXT.md           # THIS FILE — full context for agents
-├── README.md                    # User-facing docs with flow diagrams
-├── requirements.txt             # Python: anthropic, python-dotenv
+├── .env                              # API keys + USE_LANGGRAPH (gitignored)
+├── .env.example                      # Template
+├── PROJECT_CONTEXT.md                # ★ THIS FILE — full context for new sessions
+├── coding_guidelines.md              # Injected into Generator prompt
+├── requirements.txt                  # openai, anthropic, langgraph, langchain-*, numpy
 │
-├── chatbot/                     # ★ PRIMARY — ChatGPT-style Agent
-│   ├── server.py                #   Threaded HTTP server, port 3851
-│   ├── index.html               #   Shell: React/Babel/marked/hljs CDN
-│   ├── app.jsx                  #   Full React app (~890 lines, no build step)
-│   └── styles.css               #   Dark theme, all layout/components (~760 lines)
+├── agent/                            # ★ Multi-Agent System (LangGraph)
+│   ├── __init__.py                   #   Package docstring
+│   ├── orchestrator.py               #   Agent 1: Supervisor StateGraph (classify → route → retry)
+│   ├── discovery.py                  #   Agent 2: Fast discovery (GPT-4o-mini, single call, pre-loaded catalog)
+│   ├── generator.py                  #   Agent 3: Code Generation (Claude Sonnet, enhanced Untitled UI prompt)
+│   ├── reviewer.py                   #   Agent 4: QA Review prompt (used by rule-based QA node)
+│   ├── tools.py                      #   All 6 tools (3 MCP-equiv + 3 custom + Untitled UI compliance)
+│   ├── rag.py                        #   ★ RAG: vector index over catalog/tokens/docs, query function
+│   ├── server.py                     #   Async SSE streaming with thinking/chunk event separation
+│   └── mcp_client.py                 #   FastMCP client (reference for M2, not used in M1)
 │
-├── dashboard/                   # Original dashboard app
-│   ├── server.py                #   HTTP server, port 3850
-│   ├── index.html               #   Shell with catalog injection
-│   ├── app.jsx                  #   React app with panels
-│   └── styles.css               #   Dashboard styles
+├── chatbot/                          # ★ PRIMARY Frontend — ChatGPT-style Agent UI
+│   ├── server.py                     #   HTTP server (port 3851), smart routing, Claude for gen, GPT for chat
+│   ├── index.html                    #   Shell: React/Babel/marked/hljs CDN
+│   ├── app.jsx                       #   Full React app (~1100 lines) with ThinkingBar + AgentPipeline
+│   ├── styles.css                    #   Dark theme + thinking bar + pipeline visualization CSS
+│   └── preview.html                  #   Auto-generated by preview_component tool
 │
-├── design_system/               # Shared design data (used by both apps)
-│   ├── catalog.json             #   Component list (name, import, description)
-│   └── tokens.json              #   Colors, typography, spacing tokens
+├── dashboard/                        # Original dashboard app (port 3850, secondary)
+│   ├── server.py
+│   ├── index.html
+│   ├── app.jsx
+│   └── styles.css
 │
-├── docs/                        # Documentation assets
-│   ├── pipeline-flow-diagram.png   # High-level technical pipeline diagram
-│   └── user-flow-diagram.png       # Manager-friendly user flow diagram
+├── design_system/                    # ★ Shared design data (read by agent tools + RAG)
+│   ├── catalog.json                  #   24 components with Tailwind recreation patterns
+│   ├── tokens.json                   #   Full Untitled UI palette, typography, shadows
+│   └── .rag_cache/                   #   Cached embeddings (gitignored)
 │
-├── scripts/                     # Utility scripts
-│   ├── clone-component-library.ps1
-│   └── clone-component-library.sh
+├── docs/                             # Documentation + diagrams
+│   ├── architecture.md
+│   ├── database-plan.md
+│   ├── message-schemas.md
+│   ├── discovery-agent-architecture.excalidraw  # ★ NEW: Discovery agent diagram
+│   ├── deliverable-overview.excalidraw
+│   ├── plan.excalidraw.png
+│   └── pipeline-flow-diagram.png
 │
-├── docker-compose.yml           # Optional: MCP server in Docker
-├── Dockerfile                   # Optional: MCP server container
-├── server.py                    # Optional: MCP server (root level)
-└── src/mcp-client.ts            # Optional: MCP client
+└── scripts/
+    ├── clone-component-library.ps1
+    └── clone-component-library.sh
 ```
 
 ---
 
-## 5. Chatbot Backend (chatbot/server.py)
+## 6. Chatbot Backend (chatbot/server.py)
 
 - **Port:** 3851
-- **Threading:** `ThreadingMixIn` enables concurrent requests (chat streaming + preview fetches in parallel)
-- **System prompt:** Built dynamically from `PROJECT_CONTEXT.md` + `design_system/catalog.json` + `design_system/tokens.json`
-- **Model:** `claude-sonnet-4-20250514`
-- **Max tokens:** 3000 for chat streaming
+- **Code Generation:** Claude Sonnet via Anthropic SDK (`_get_anthropic_client()`)
+- **Classification/Chat:** GPT-4o-mini via OpenAI SDK (`_get_openai_client()`)
+- **Threading:** `ThreadingMixIn` for concurrent requests
+- **Env loading:** `_load_env()` reads ALL vars from `.env` via python-dotenv
+- **Smart Routing:** `_fast_classify()` does **full classification** (generate/discover/review/chat) and passes workflow to pipeline
 
 ### Routes
 
@@ -117,127 +223,242 @@ milestone1-agent/
 |--------|----------|------|----------|
 | GET | `/api/health` | — | `{ ok, has_api_key }` |
 | GET | `/api/catalog` | — | `{ tokens, catalog }` |
-| POST | `/api/chat/stream` | `{ message, history }` | SSE stream: `{"type":"chunk","text":"..."}` then `{"type":"done"}` |
-| POST | `/api/chat` | `{ message, history }` | `{ content }` |
-| POST | `/api/preview` | `{ code }` | Full HTML document for iframe rendering |
-| POST | `/api/generate` | `{ prompt }` | `{ code }` |
-| POST | `/api/generate-variants` | `{ prompt, count, keywords }` | `{ variants: [{ code, keywords }] }` |
+| POST | `/api/chat/stream` | `{ message, history }` | SSE stream (status + thinking + chunk + done) |
+| POST | `/api/chat` | `{ message, history }` | `{ content }` (non-streaming, GPT-4o) |
+| POST | `/api/preview` | `{ code }` | Full HTML for iframe (with Untitled UI Tailwind config) |
+| POST | `/api/generate` | `{ prompt }` | `{ code }` (Claude Sonnet) |
+| POST | `/api/generate-variants` | `{ prompt, count, keywords }` | `{ variants }` (Claude Sonnet) |
 
-### Preview template
-- Injects code into HTML with React 18 + ReactDOM + Babel + Tailwind CSS (all CDN)
-- Auto-detects component name and appends `root.render(React.createElement(Name))` if missing
-- Escapes `\` and `</script>` in user code
+### Streaming flow when `USE_LANGGRAPH=true`
 
-### System prompt rules
-- Concise responses (1-3 sentences max text)
-- Always output runnable code ending with `root.render(...)`
-- Compact components (under 80 lines)
-- Variant rules: separate jsx blocks, different component names, labeled headings
+1. `handle_stream()` → `_fast_classify(message)` → returns "generate"/"discover"/"review"/"chat"
+2. If `"chat"` → `_handle_direct_chat()` (GPT-4o-mini streaming + RAG context, fast)
+3. If `"generate"/"discover"/"review"` → `_handle_langgraph_stream(message, history, workflow=...)` → `agent.server.run_agent_stream()`
+4. SSE events: status → thinking (discovery/gen tokens, hidden in bar) → chunk (final response) → done
+
+### Helper Functions
+
+- `_get_anthropic_client()` — Returns `anthropic.Anthropic` client for Claude API
+- `_get_openai_client()` — Returns `openai.OpenAI` client (used for RAG embeddings + chat)
+- `_prepare_anthropic_messages()` — Converts OpenAI-style messages to Anthropic format (extracts system, merges consecutive same-role)
+- `generate_code()` — Uses Claude Sonnet for single component generation
+- `generate_variants()` — Uses Claude Sonnet for 2-3 variant generation
+
+### Preview Template Features
+
+- Untitled UI Tailwind config (custom colors, shadows, border-radius, Inter font)
+- Console error capture via `window.onerror` → reports to parent via `postMessage`
+- "Untitled UI" watermark badge in bottom-right corner
+- Import statement stripping and duplicate root declaration removal
 
 ---
 
-## 6. Chatbot Frontend (chatbot/app.jsx)
+## 7. Chatbot Frontend (chatbot/app.jsx)
 
 ### Key Components
 
 | Component | Purpose |
 |-----------|---------|
-| `App` | Main state: conversations, streaming, codeFiles, rightPanelWidth, resize logic |
-| `Sidebar` | Conversation list grouped by date, new chat, delete |
-| `WelcomeScreen` | Suggestion cards when no conversation active |
-| `MarkdownContent` | Renders markdown with highlight.js code blocks + copy buttons |
-| `PreviewModal` | Fullscreen modal — single (with viewport switcher) or multi-variant (side-by-side) |
-| `InlinePreview` | Fetches `/api/preview`, renders iframe, expand button, code section, retry |
-| `MultiPreview` | Side-by-side variant grid with per-variant expand + "Expand All" button |
-| `Message` | Renders user/assistant messages; detects single vs multi code blocks |
-| `InputArea` | Auto-growing textarea, send/stop buttons |
-| `CodePanel` | Right panel top: list of saved code files with names, viewer, copy |
-| `FeaturesPanel` | Right panel bottom: Quick Actions / Variants / Catalog tabs — all through chat |
+| `App` | Main state: conversations, streaming, agentStep, pipelineVisible, codeFiles, thinkingContent |
+| `ThinkingBar` | ★ NEW: Collapsible thinking bar (like Cursor) — shows discovery/generation output hidden by default |
+| `AgentPipeline` | Real-time pipeline visualization (5 nodes: Classify→Discovery→Generate→QA→Respond) |
+| `Sidebar` | Conversation history grouped by date |
+| `WelcomeScreen` | Suggestion cards with multi-agent description |
+| `MarkdownContent` | Renders markdown + highlight.js code blocks |
+| `PreviewModal` | Fullscreen preview — single (with viewport switcher) or multi-variant |
+| `InlinePreview` | Inline iframe preview + expand + code toggle |
+| `MultiPreview` | Side-by-side variant grid |
+| `Message` | User/assistant messages with ThinkingBar + auto-detected previews |
+| `InputArea` | Auto-growing textarea with send/stop |
+| `CodePanel` | Right panel: saved code files |
+| `FeaturesPanel` | Right panel: Quick Actions / Variants / Catalog tabs |
 
-### Code Extraction Functions
+### ThinkingBar (NEW — Cursor-style collapsible thinking)
 
-| Function | Purpose |
-|----------|---------|
-| `extractBestRunnableCodeBlock(text)` | Finds the best single runnable code block |
-| `extractAllRunnableCodeBlocks(text)` | Finds ALL runnable blocks (for variant detection) |
-| `extractVariantLabels(text)` | Extracts "## Variant N: Label" headings |
-| `extractComponentName(code)` | Finds component name for file naming |
-| `textWithoutAnyCodeBlocks(text)` | Strips all code blocks → clean prose for bubble text |
+- During generation: shows a pulsing "Thinking..." bar with the discovery/generation output hidden inside
+- After completion: collapses to "Thought for X lines" — click to expand and see full thinking
+- Thinking content is saved with each message (`thinkingContent` field) so it persists across conversations
+- Backend sends `{"type": "thinking"}` events for discovery/generation tokens (not shown in chat)
+- Backend sends `{"type": "chunk"}` events only for the final formatted response (shown in chat)
 
-### Message Processing Flow
-1. Claude streams full response → accumulated in `streamingContent`
-2. On done: `processAssistantMessage(fullContent)` runs
-3. Extracts all runnable blocks → if 2+, stores as `codes[]` + `variantLabels[]`
-4. If single block: stores as `code`
-5. Strips code from bubble text → `bubbleText` (clean prose)
-6. Saves each code to `codeFiles` with smart names (component name or variant label)
-7. Message stored: `{ role, content, bubbleText, code, codes, variantLabels }`
-8. Rendering: single code → `InlinePreview`, multiple codes → `MultiPreview`
+### Chat State Management
 
-### Features Panel (Shortcut Tool)
-- **Quick Actions tab:** Pre-built prompts sent to chat. Categories: Style, Modify, Enhance. Each appends "Output complete React component..." rule to ensure preview works.
-- **Variants tab:** Pick count + keywords → builds prompt → sends to chat. Also has quick preset buttons (Light vs Dark, Compact vs Spacious, Min/Bold/Fun).
-- **Catalog tab:** Clickable components → sends generation prompt to chat.
-- All features use `onSendToChat(msg)` which calls the same `sendMessage` as typing — full conversation memory.
+- **`conversationsRef`**: A ref that always holds the latest conversations state, used by `sendMessage` to avoid stale closures
+- **`thinkingContent`**: State variable that accumulates thinking tokens during streaming
+- **History truncation**: Assistant messages in history have code blocks replaced with `[code block omitted]` and truncated to 500 chars to save tokens
+- **History sent to backend**: Last 20 messages with `{role, content}` format
 
-### Resize Handle
-- `startResize` callback on `onMouseDown`
-- Tracks mouse movement → updates `rightPanelWidth` state (260px–700px)
-- Applied as inline style on right panel
+### Code Extraction
+
+- `extractBestRunnableCodeBlock()`: Scoring system prioritizes blocks with `root.render` (+50000) and PascalCase components (+30000)
+- `extractAllRunnableCodeBlocks()`: For variant detection (multiple complete components)
+- Streaming: Detects unclosed code fences and strips them to avoid rendering raw code
 
 ---
 
-## 7. Chatbot Styles (chatbot/styles.css)
+## 8. Design System Data
 
-- **Theme:** Dark (--bg: #0d0d0d, --bg-chat: #212121, --accent: #6366f1 indigo)
-- **Layout:** Three-column flex: sidebar (260px) | chat (flex:1) | right panel (380px default, resizable)
-- **Key sections:** sidebar, chat header, messages, inline preview, fullscreen modal, multi-preview grid, code blocks (max-height 280px scrollable), input area, right panel (code files + features), shortcut buttons (pill-shaped), responsive (mobile: right panel hidden, sidebar overlay)
+### catalog.json (24 components)
 
----
+Each component includes:
+- `name`, `description`, `props`
+- **`tailwind_pattern`** — exact Tailwind CSS recreation pattern for browser sandbox
+- **`variants`** — different style options with Tailwind classes
 
-## 8. Dashboard Backend & Frontend (dashboard/)
+**Components:** Button, Input, Badge, Avatar, Card, Table, Tabs, Modal, Select, Checkbox, EmptyState, StatsCard, SearchInput, ProgressBar, Toggle, Radio, Textarea, Dropdown, Tooltip, Tag, Pagination, FileUpload, LoadingIndicator, Notification
 
-- **Port:** 3850
-- Same structure as chatbot but simpler: no streaming, no multi-variant detection, no quick actions
-- Has CatalogPanel, ChatPanel, GeneratePanel, AgentPanel
-- Serves as the original app; chatbot is the enhanced version
+Also includes `layout_patterns` (page, container, card grid, sidebar) and `icon_patterns` (inline SVGs)
 
----
+### tokens.json (Untitled UI palette)
 
-## 9. Design System
+- **9 color families:** primary/blue, gray, success/emerald, error/red, warning/amber, purple, indigo, rose (full shade ranges 25-900)
+- **Typography:** Inter font, 8 sizes (xs-4xl), 4 weights, 3 line heights
+- **Spacing:** 16 values (0.5-24)
+- **Border radius:** 7 values (none-full)
+- **Shadows:** 5 levels (xs-xl) with Untitled UI shadow values
+- **tailwindMapping:** primary→blue, success→emerald, error→red, warning→amber
 
-- **`design_system/catalog.json`** — Component array: `{ name, import/path, description }`
-- **`design_system/tokens.json`** — Colors, typography, spacing
-- Both loaded into Claude's system prompt so generated code follows design system
-- Catalog browsable in the Chatbot's Catalog tab (right panel)
+### coding_guidelines.md
 
----
-
-## 10. Conventions and Important Behavior
-
-- **All features go through chat** — Quick Actions, Variants, Catalog clicks all send prompts to chat. No separate generation UI. Full conversation memory.
-- **Code extraction:** All fenced code blocks stripped from bubble text. Best/all runnable blocks used for previews.
-- **Preview sandbox:** Code runs in an iframe with React + Babel + Tailwind from CDN. Server auto-appends `root.render(...)` if missing.
-- **Multi-variant detection:** If response has 2+ runnable code blocks → shown side-by-side with individual + combined expand.
-- **File naming:** Code files named by extracted component name (e.g. "DashboardCard") or variant label (e.g. "CardMinimal — Minimal").
-- **Concise output:** System prompt enforces brief text (1-3 sentences) and compact code (under 80 lines).
-- **localStorage:** Conversations persisted client-side. No server-side storage.
+Injected into Generator's prompt. Covers:
+- PascalCase naming, function components only
+- Tailwind CSS only (no inline styles)
+- Accessibility: focus states, semantic HTML, aria-labels
+- No imports (React/ReactDOM global via CDN)
+- Component structure pattern
+- Variant generation rules
 
 ---
 
-## 11. For a New Cursor Agent: What to Do
+## 9. Generator Prompt (ENHANCED)
+
+The generator in `agent/generator.py` has an extensively detailed system prompt that includes:
+
+### Exact Untitled UI Tailwind Patterns (baked into prompt)
+
+- **Buttons**: Primary (`bg-blue-600 hover:bg-blue-700 rounded-lg shadow-sm`), Secondary, Destructive, Ghost
+- **Inputs**: Field with label, search input with icon
+- **Cards**: Container (`bg-white border-gray-200 rounded-xl shadow-sm`), header/body sections, stats card
+- **Tables**: Wrapper with rounded-xl, thead bg-gray-50, tbody divide-y, hover rows
+- **Badges**: Success (emerald), Error (red), Warning (amber), Info (blue), Default (gray)
+- **Avatars**: Small/Medium with initials, image variant
+- **Layout**: Page (min-h-screen bg-gray-50), container, section headers
+- **Typography**: Page title, section title, body, caption, link
+- **Tabs**: Container with border-b, active/inactive states
+- **Modal**: Overlay with backdrop-blur, panel with rounded-xl, header/footer
+- **Toggle**: Track ON/OFF with thumb transition
+- **Icons**: Inline SVG conventions (20x20, stroke-based)
+
+This ensures generated code matches the Untitled UI design system exactly, not generic Tailwind.
+
+---
+
+## 10. QA System Details
+
+The QA system runs two rule-based tools **directly** (no LLM agent — instant execution):
+
+**verify_quality** (scoring from 100):
+- PascalCase component name (-15 if missing)
+- className/Tailwind usage (-10 if absent)
+- No inline styles (-5)
+- root.render present (-15 if missing)
+- Under 150 lines (-5 if over)
+- No import statements (-10)
+- No hardcoded hex colors (-5)
+- No class components (-15)
+- **Untitled UI compliance:**
+  - Button/Input must use rounded-lg (-5)
+  - Cards must use rounded-xl (-5)
+  - Non-standard colors flagged: teal, cyan, lime, fuchsia, etc. (-5)
+  - Font-family override check (-5)
+  - Table tbody must use divide-y divide-gray-200 (-5)
+
+**check_accessibility** (scoring from 100):
+- Semantic HTML tags (-10 if missing)
+- aria-label on icon buttons (-15 if missing)
+- alt on images (-15 if missing)
+- Labels on form inputs (-15 if missing)
+- Focus state classes (-10 if missing)
+- Color contrast check (-5 for very light text)
+
+Verdict: PASS if score >= 70 and no errors. FAIL triggers retry (max 2 attempts).
+
+---
+
+## 11. RAG System Details
+
+**File:** `agent/rag.py`
+
+### How It Works
+1. **Indexing** (`build_index()`): Chunks catalog.json (24 component chunks), tokens.json (6 category chunks), PROJECT_CONTEXT.md (~8 section chunks), coding_guidelines.md (~4 section chunks) = ~56 total chunks
+2. **Embedding**: OpenAI `text-embedding-3-small` embeds all chunks into float32 vectors
+3. **Caching**: Embeddings saved as `.npy` files in `design_system/.rag_cache/` with fingerprint-based invalidation
+4. **Querying** (`query(text, k=3)`): Embeds the query, cosine similarity against all chunks, returns top-k
+
+### Injection Points
+- **`chatbot/server.py` → `_handle_direct_chat()`**: RAG context injected as system message after main prompt
+- **`agent/orchestrator.py` → `respond_node()` chat path**: RAG context injected before conversation history
+
+---
+
+## 12. Important Decisions & Gotchas
+
+- **Claude Sonnet for code generation:** Generator uses `ChatAnthropic(model="claude-sonnet-4-20250514")`. Chatbot server's `generate_code()` and `generate_variants()` use the Anthropic SDK directly. Falls back to GPT-4o if `ANTHROPIC_API_KEY` is not set.
+- **GPT-4o-mini for fast tasks:** Classification, discovery, and chat use GPT-4o-mini. Claude Haiku was attempted but returned 404 errors with the available API key, so GPT-4o-mini is used instead.
+- **Pre-classification eliminates redundant LLM call:** `_fast_classify()` in `chatbot/server.py` does full classification and passes the result as `workflow` to `run_agent_stream()`. The `classify_node` in the pipeline checks if workflow is already set and skips its LLM call.
+- **Thinking vs Chunk events:** `agent/server.py` tracks the current node. LLM tokens from `discovery`/`generation` nodes are sent as `{"type": "thinking"}`. Only `respond` node tokens are sent as `{"type": "chunk"}`. This keeps the chat clean.
+- **ThinkingBar component:** Frontend shows a collapsible bar (like Cursor's thinking indicator) for thinking events. Collapsed by default, expandable to see full discovery/generation output.
+- **No ReAct loops in Discovery/QA:** Discovery is a single GPT-4o-mini call with pre-loaded catalog. QA calls regex tools directly. This eliminates ~15 unnecessary LLM round-trips.
+- **Chat state uses ref:** `conversationsRef` in app.jsx ensures `sendMessage` always has the latest conversation state, fixing the stale closure bug.
+- **History truncation:** Assistant messages in history have code blocks stripped and are truncated to 500 chars to avoid wasting tokens on repeated code.
+- **RAG auto-rebuilds:** The RAG index checks source file mtimes and rebuilds automatically when catalog.json, tokens.json, or docs change.
+- **Preview templates:** Both `chatbot/server.py` and `agent/tools.py` have matching preview HTML templates with full Untitled UI Tailwind config (custom colors, Inter font, shadows, border-radius).
+- **`_load_env()` loads ALL vars:** The chatbot server's env loader reads every `KEY=VALUE` from `.env`. Critical for `USE_LANGGRAPH`, `OPENAI_API_KEY`, and `ANTHROPIC_API_KEY`.
+- **Multiple processes on port 3851:** On Windows, always kill old processes before restarting: `netstat -ano | Select-String ":3851"` then `taskkill /F /PID <pid>`
+- **Anthropic helper functions:** `chatbot/server.py` has `_get_anthropic_client()` and `_prepare_anthropic_messages()` for Claude API calls. The prepare function extracts system messages and merges consecutive same-role messages (Anthropic requirement).
+
+---
+
+## 13. Recent Changes (This Session)
+
+### What Changed
+1. **Switched code generation to Claude Sonnet** — `generate_code()`, `generate_variants()`, and the pipeline generator all use `claude-sonnet-4-20250514` via Anthropic SDK
+2. **Pre-classification optimization** — `_fast_classify()` now returns full intent (generate/discover/review/chat), pipeline `classify_node` skips LLM when workflow is pre-set
+3. **Enhanced generator prompt** — Added exact Untitled UI Tailwind patterns (buttons, cards, tables, badges, avatars, modals, tabs, toggles, typography, layout) for pixel-perfect design fidelity
+4. **Thinking bar (Cursor-style)** — New `ThinkingBar` component shows discovery/generation output as a collapsible bar, keeping the chat clean
+5. **SSE thinking events** — `agent/server.py` now sends `{"type": "thinking"}` for discovery/generation tokens, `{"type": "chunk"}` only for final response
+6. **Timing improvement** — Eliminated redundant classify LLM call (~2s saved). Total generate pipeline: ~12-18s (down from ~19-27s)
+7. **New deliverable** — `docs/discovery-agent-architecture.excalidraw` showing Discovery Agent architecture and connections
+
+### What Was Attempted But Reverted
+- **Claude Haiku for classify/discovery/chat** — Attempted `claude-3-5-haiku-20241022` and `claude-haiku-4-5-20251001` but both returned 404 with the available API key. Reverted to GPT-4o-mini for all fast tasks.
+
+---
+
+## 14. Milestone Roadmap
+
+| Milestone | Status | Description |
+|-----------|--------|-------------|
+| **M1: Local LangGraph** | ★ CURRENT | 4 agents, 6 local tools, RAG, Claude Sonnet + GPT-4o-mini, ChatGPT-style UI with thinking bar |
+| **M2: Ctrlagent Maker** | PLANNED | Migrate agents to Ctrlagent Maker platform, MCP server tools, Keycloak auth |
+| **M3: Production** | PLANNED | Pulse dashboards, PostgreSQL persistence, full deployment |
+
+---
+
+## 15. For a New Cursor Agent: Quick Start
 
 1. **Read this file** to understand the full project
-2. **Run the chatbot:** `cd chatbot && python server.py` → open http://127.0.0.1:3851
-3. **Env:** Ensure `.env` with `ANTHROPIC_API_KEY` exists at project root
-4. **Chatbot UI changes:** Edit `chatbot/app.jsx` (React) and `chatbot/styles.css`
-5. **Chatbot API changes:** Edit `chatbot/server.py`; routes in `do_GET` / `do_POST`
-6. **Dashboard changes:** Same pattern in `dashboard/` folder
-7. **Design data:** Edit `design_system/catalog.json` and `tokens.json`
-8. **README:** Update `README.md` and diagrams in `docs/` if pipeline changes
+2. **Run:** `cd milestone1-agent/chatbot && python server.py` → open http://localhost:3851
+3. **Env:** Ensure `.env` at project root has `OPENAI_API_KEY=...`, `ANTHROPIC_API_KEY=...`, and `USE_LANGGRAPH=true`
+4. **Agent changes:** Edit files in `agent/` directory (orchestrator, discovery, generator, reviewer, tools, rag)
+5. **Frontend changes:** Edit `chatbot/app.jsx` (React) and `chatbot/styles.css`
+6. **Backend changes:** Edit `chatbot/server.py` for API routes
+7. **Design system:** Edit `design_system/catalog.json` and `tokens.json` (RAG auto-rebuilds)
+8. **Dependencies:** `pip install -r requirements.txt` (openai, anthropic, langgraph, langchain-openai, langchain-anthropic, numpy)
+9. **Kill old processes:** On Windows, always check `netstat -ano | Select-String ":3851"` and kill before restart
 
 ---
 
-## 12. One-Line Summary
+## 16. One-Line Summary
 
-**ChatGPT-style design system agent (React + Python + Claude) with streaming chat, inline live UI previews, expandable fullscreen modal with viewport switcher, side-by-side variant generation, one-click quick action shortcuts, draggable resizable panels, auto-named code file saving, and design system catalog integration — all running through a single conversation with full memory.**
+**Multi-agent design system chatbot (4 LangGraph agents + 6 tools + RAG + Claude Sonnet for code gen + GPT-4o-mini for chat/classify/discovery) with 24-component Untitled UI catalog, enhanced generator prompt with exact Tailwind patterns, Cursor-style collapsible thinking bar, real-time pipeline visualization, inline live UI previews, Untitled UI compliance checks, and ChatGPT-style conversation UI.**

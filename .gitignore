@@ -1,10 +1,32 @@
-__pycache__/
-*.py[cod]
+# Environment
+.env
 .venv/
 venv/
-.env
+
+# Python
+__pycache__/
+*.py[cod]
 *.egg-info/
 dist/
-node_modules/
+build/
+
+# RAG cache
+.rag_cache/
+design_system/.rag_cache/
+
+# Generated previews
+chatbot/preview.html
+
+# OS
 .DS_Store
 Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Node (not used but just in case)
+node_modules/
+
+# Docker
+.chromadb/

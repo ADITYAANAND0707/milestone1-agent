@@ -1,105 +1,237 @@
 {
   "source": "https://github.com/untitleduico/untitledui-nextjs-starter-kit",
-  "clone": "git clone https://github.com/untitleduico/untitledui-nextjs-starter-kit.git component-library",
-  "description": "Component library is the Untitled UI Next.js starter kit. Imports use @/components/... from the cloned repo.",
+  "usage_note": "Components below are from Untitled UI. Since generated code runs in a browser sandbox (React CDN + Tailwind CDN), recreate these patterns using Tailwind classes. Do NOT use import statements.",
   "components": [
     {
       "name": "Button",
       "path": "base/buttons/button.tsx",
-      "import": "import { Button } from '@/components/base/buttons/button'",
-      "description": "Primary, secondary, outline, ghost. Uses React Aria. Variants: primary, secondary, tertiary, link.",
-      "props": ["children", "variant?", "size?", "disabled?", "onPress?", "className?"]
+      "description": "Primary action button. Variants: primary (filled blue), secondary (gray outline), tertiary (text only), destructive (red).",
+      "props": ["children", "variant?", "size?", "disabled?", "onClick?", "className?"],
+      "tailwind_pattern": "<button className=\"px-4 py-2.5 bg-blue-600 text-white text-sm font-semibold rounded-lg shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors\">Label</button>",
+      "variants": {
+        "primary": "bg-blue-600 text-white hover:bg-blue-700 shadow-sm",
+        "secondary": "bg-white text-gray-700 border border-gray-300 hover:bg-gray-50 shadow-sm",
+        "tertiary": "bg-transparent text-blue-600 hover:text-blue-700 hover:bg-blue-50",
+        "destructive": "bg-red-600 text-white hover:bg-red-700 shadow-sm"
+      }
     },
     {
       "name": "Input",
       "path": "base/input/input.tsx",
-      "import": "import { Input } from '@/components/base/input/input'",
-      "description": "Text input with label, hint, error. Use with Label. Types: text, email, password, number.",
-      "props": ["label?", "placeholder?", "error?", "disabled?", "type?", "value?", "onChange?"]
+      "description": "Text input field with label, hint text, and error state.",
+      "props": ["label?", "placeholder?", "error?", "disabled?", "type?", "value?", "onChange?"],
+      "tailwind_pattern": "<div className=\"flex flex-col gap-1.5\">\n  <label className=\"text-sm font-medium text-gray-700\">Email</label>\n  <input type=\"email\" placeholder=\"you@company.com\" className=\"px-3.5 py-2.5 border border-gray-300 rounded-lg text-gray-900 text-base placeholder:text-gray-500 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500\" />\n  <p className=\"text-sm text-gray-500\">Hint text</p>\n</div>",
+      "error_state": "border-red-300 focus:ring-red-500 + <p className=\"text-sm text-red-600\">Error message</p>"
     },
     {
-      "name": "Label",
-      "path": "base/input/label.tsx",
-      "import": "import { Label } from '@/components/base/input/label'",
-      "description": "Form label for inputs.",
-      "props": ["children", "htmlFor?", "required?"]
+      "name": "Badge",
+      "path": "base/badges/badges.tsx",
+      "description": "Status badge/pill. Use for flight status, order status, tags.",
+      "props": ["children", "variant?", "size?", "dot?"],
+      "tailwind_pattern": "<span className=\"inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-50 text-emerald-700\"><span className=\"w-1.5 h-1.5 rounded-full bg-emerald-500\"></span>Active</span>",
+      "variants": {
+        "success": "bg-emerald-50 text-emerald-700",
+        "error": "bg-red-50 text-red-700",
+        "warning": "bg-amber-50 text-amber-700",
+        "gray": "bg-gray-100 text-gray-700",
+        "blue": "bg-blue-50 text-blue-700",
+        "purple": "bg-purple-50 text-purple-700"
+      }
     },
     {
       "name": "Avatar",
       "path": "base/avatar/avatar.tsx",
-      "import": "import { Avatar } from '@/components/base/avatar/avatar'",
-      "description": "User avatar with image or initials. Sizes: xs, sm, md, lg, xl.",
-      "props": ["src?", "alt?", "name?", "size?"]
+      "description": "User avatar. Shows image or initials fallback with colored background.",
+      "props": ["src?", "alt?", "name?", "size?"],
+      "tailwind_pattern": "<div className=\"w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-sm font-semibold text-blue-600\">AB</div>",
+      "with_image": "<img src=\"url\" alt=\"Name\" className=\"w-10 h-10 rounded-full object-cover border-2 border-white shadow-sm\" />"
     },
     {
-      "name": "Badges",
-      "path": "base/badges/badges.tsx",
-      "import": "import { Badge } from '@/components/base/badges/badges'",
-      "description": "Badge/pill for status or labels. Variants: gray, success, error, warning.",
-      "props": ["children", "variant?", "size?", "dot?"]
-    },
-    {
-      "name": "Checkbox",
-      "path": "base/checkbox/checkbox.tsx",
-      "import": "import { Checkbox } from '@/components/base/checkbox/checkbox'",
-      "description": "Checkbox with label. Uses React Aria.",
-      "props": ["children", "isSelected?", "onChange?", "disabled?"]
-    },
-    {
-      "name": "Select",
-      "path": "base/select/select.tsx",
-      "import": "import { Select } from '@/components/base/select/select'",
-      "description": "Dropdown select. Use with SelectItem.",
-      "props": ["children", "placeholder?", "selectedKey?", "onSelectionChange?", "disabled?"]
-    },
-    {
-      "name": "Dropdown",
-      "path": "base/dropdown/dropdown.tsx",
-      "import": "import { Dropdown } from '@/components/base/dropdown/dropdown'",
-      "description": "Dropdown menu with trigger and items.",
-      "props": ["children", "trigger", "align?", "disabled?"]
-    },
-    {
-      "name": "Modal",
-      "path": "application/modals/modal.tsx",
-      "import": "import { Modal } from '@/components/application/modals/modal'",
-      "description": "Modal dialog.",
-      "props": ["children", "isOpen?", "onOpenChange?", "title?"]
-    },
-    {
-      "name": "Tabs",
-      "path": "application/tabs/tabs.tsx",
-      "import": "import { Tabs } from '@/components/application/tabs/tabs'",
-      "description": "Tab navigation.",
-      "props": ["children", "defaultKey?", "onChange?"]
+      "name": "Card",
+      "path": "custom pattern",
+      "description": "Content card container. Untitled UI uses white bg, subtle border, rounded-xl, shadow-sm.",
+      "props": ["children", "className?"],
+      "tailwind_pattern": "<div className=\"bg-white border border-gray-200 rounded-xl shadow-sm p-6\">Content</div>",
+      "with_header": "<div className=\"bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden\">\n  <div className=\"px-6 py-4 border-b border-gray-200\">\n    <h3 className=\"text-lg font-semibold text-gray-900\">Title</h3>\n    <p className=\"text-sm text-gray-500 mt-1\">Description</p>\n  </div>\n  <div className=\"p-6\">Body</div>\n</div>"
     },
     {
       "name": "Table",
       "path": "application/table/table.tsx",
-      "import": "import { Table } from '@/components/application/table/table'",
-      "description": "Data table with columns and rows.",
-      "props": ["columns", "data", "keyExtractor?"]
+      "description": "Data table with header, rows, and optional actions.",
+      "props": ["columns", "data", "keyExtractor?"],
+      "tailwind_pattern": "<div className=\"border border-gray-200 rounded-xl overflow-hidden shadow-sm\">\n  <table className=\"w-full\">\n    <thead>\n      <tr className=\"bg-gray-50 border-b border-gray-200\">\n        <th className=\"text-left px-6 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider\">Column</th>\n      </tr>\n    </thead>\n    <tbody className=\"divide-y divide-gray-200\">\n      <tr className=\"hover:bg-gray-50 transition-colors\">\n        <td className=\"px-6 py-4 text-sm text-gray-900\">Data</td>\n      </tr>\n    </tbody>\n  </table>\n</div>"
+    },
+    {
+      "name": "Tabs",
+      "path": "application/tabs/tabs.tsx",
+      "description": "Tab navigation with underline active indicator.",
+      "props": ["items", "activeKey?", "onChange?"],
+      "tailwind_pattern": "<div className=\"border-b border-gray-200\">\n  <nav className=\"flex gap-4 -mb-px\">\n    <button className=\"px-1 py-3 text-sm font-semibold text-blue-600 border-b-2 border-blue-600\">Active</button>\n    <button className=\"px-1 py-3 text-sm font-medium text-gray-500 hover:text-gray-700 hover:border-gray-300 border-b-2 border-transparent\">Tab 2</button>\n  </nav>\n</div>"
+    },
+    {
+      "name": "Modal",
+      "path": "application/modals/modal.tsx",
+      "description": "Dialog overlay. Centered, backdrop blur, max-w-lg.",
+      "props": ["isOpen", "onClose", "title?", "children"],
+      "tailwind_pattern": "<div className=\"fixed inset-0 z-50 flex items-center justify-center\">\n  <div className=\"fixed inset-0 bg-gray-900/70 backdrop-blur-sm\" onClick={onClose}></div>\n  <div className=\"relative bg-white rounded-xl shadow-xl max-w-lg w-full mx-4 p-6\">\n    <h2 className=\"text-lg font-semibold text-gray-900\">Title</h2>\n    <p className=\"text-sm text-gray-500 mt-2\">Content</p>\n    <div className=\"flex justify-end gap-3 mt-6\">\n      <button className=\"px-4 py-2.5 text-sm font-semibold text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50\">Cancel</button>\n      <button className=\"px-4 py-2.5 text-sm font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700\">Confirm</button>\n    </div>\n  </div>\n</div>"
+    },
+    {
+      "name": "Select",
+      "path": "base/select/select.tsx",
+      "description": "Dropdown select input.",
+      "props": ["options", "value?", "onChange?", "placeholder?"],
+      "tailwind_pattern": "<select className=\"px-3.5 py-2.5 border border-gray-300 rounded-lg text-gray-900 text-sm bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 appearance-none\">\n  <option>Select...</option>\n</select>"
+    },
+    {
+      "name": "Checkbox",
+      "path": "base/checkbox/checkbox.tsx",
+      "description": "Checkbox with label text.",
+      "props": ["checked?", "onChange?", "label?"],
+      "tailwind_pattern": "<label className=\"flex items-center gap-2 cursor-pointer\">\n  <input type=\"checkbox\" className=\"w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500\" />\n  <span className=\"text-sm text-gray-700\">Label</span>\n</label>"
     },
     {
       "name": "EmptyState",
       "path": "application/empty-state/empty-state.tsx",
-      "import": "import { EmptyState } from '@/components/application/empty-state/empty-state'",
-      "description": "Empty state with illustration and CTA.",
-      "props": ["title", "description?", "action?", "image?"]
+      "description": "Empty state with icon, title, description, and CTA button.",
+      "props": ["title", "description?", "action?"],
+      "tailwind_pattern": "<div className=\"text-center py-12\">\n  <div className=\"mx-auto w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center mb-4\">\n    <svg className=\"w-6 h-6 text-gray-400\" ...></svg>\n  </div>\n  <h3 className=\"text-sm font-semibold text-gray-900\">No data</h3>\n  <p className=\"text-sm text-gray-500 mt-1\">Get started by creating something.</p>\n  <button className=\"mt-4 px-4 py-2.5 bg-blue-600 text-white text-sm font-semibold rounded-lg\">+ Add new</button>\n</div>"
     },
     {
-      "name": "ButtonGroup",
-      "path": "base/button-group/button-group.tsx",
-      "import": "import { ButtonGroup } from '@/components/base/button-group/button-group'",
-      "description": "Group of buttons together.",
-      "props": ["children", "variant?", "size?"]
+      "name": "StatsCard",
+      "path": "custom pattern",
+      "description": "Metric/KPI card showing a number with label, trend arrow, and change percentage.",
+      "props": ["label", "value", "change?", "trend?"],
+      "tailwind_pattern": "<div className=\"bg-white border border-gray-200 rounded-xl p-6 shadow-sm\">\n  <p className=\"text-sm font-medium text-gray-500\">Total Users</p>\n  <div className=\"flex items-end gap-2 mt-2\">\n    <p className=\"text-3xl font-semibold text-gray-900\">2,420</p>\n    <span className=\"inline-flex items-center text-sm font-medium text-emerald-600\"><svg className=\"w-4 h-4 mr-0.5\" fill=\"none\" stroke=\"currentColor\" viewBox=\"0 0 24 24\"><path strokeLinecap=\"round\" strokeLinejoin=\"round\" strokeWidth={2} d=\"M5 10l7-7m0 0l7 7m-7-7v18\" /></svg>12%</span>\n  </div>\n</div>"
     },
     {
-      "name": "InputGroup",
-      "path": "base/input/input-group.tsx",
-      "import": "import { InputGroup } from '@/components/base/input/input-group'",
-      "description": "Input with leading/trailing addons.",
-      "props": ["children", "leadingAddon?", "trailingAddon?"]
+      "name": "SearchInput",
+      "path": "custom pattern",
+      "description": "Search bar with magnifying glass icon.",
+      "props": ["value?", "onChange?", "placeholder?"],
+      "tailwind_pattern": "<div className=\"relative\">\n  <svg className=\"absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400\" fill=\"none\" stroke=\"currentColor\" viewBox=\"0 0 24 24\"><path strokeLinecap=\"round\" strokeLinejoin=\"round\" strokeWidth={2} d=\"M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z\" /></svg>\n  <input type=\"search\" placeholder=\"Search...\" className=\"w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg text-sm text-gray-900 placeholder:text-gray-500 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500\" />\n</div>"
+    },
+    {
+      "name": "ProgressBar",
+      "path": "custom pattern",
+      "description": "Horizontal progress indicator with label and percentage.",
+      "props": ["value", "max?", "label?"],
+      "tailwind_pattern": "<div>\n  <div className=\"flex justify-between text-sm mb-1\">\n    <span className=\"font-medium text-gray-700\">Progress</span>\n    <span className=\"text-gray-500\">75%</span>\n  </div>\n  <div className=\"w-full bg-gray-200 rounded-full h-2\">\n    <div className=\"bg-blue-600 h-2 rounded-full\" style={{width: '75%'}}></div>\n  </div>\n</div>"
+    },
+    {
+      "name": "Toggle",
+      "path": "base/toggle/toggle.tsx",
+      "description": "On/off switch toggle. Use for settings, preferences, feature flags.",
+      "props": ["checked?", "onChange?", "label?", "disabled?"],
+      "tailwind_pattern": "<label className=\"flex items-center gap-3 cursor-pointer\">\n  <button role=\"switch\" className=\"relative inline-flex h-6 w-11 items-center rounded-full bg-gray-200 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2\" aria-checked=\"false\">\n    <span className=\"inline-block h-5 w-5 transform rounded-full bg-white shadow-sm transition-transform translate-x-0.5\"></span>\n  </button>\n  <span className=\"text-sm font-medium text-gray-700\">Label</span>\n</label>",
+      "variants": {
+        "on": "bg-blue-600, translate-x-5",
+        "off": "bg-gray-200, translate-x-0.5",
+        "disabled": "opacity-50 cursor-not-allowed"
+      }
+    },
+    {
+      "name": "Radio",
+      "path": "base/radio-buttons/radio-buttons.tsx",
+      "description": "Radio button group for single-choice selection. Untitled UI style with custom circle.",
+      "props": ["options", "value?", "onChange?", "name?", "label?"],
+      "tailwind_pattern": "<fieldset>\n  <legend className=\"text-sm font-medium text-gray-700 mb-3\">Select option</legend>\n  <div className=\"flex flex-col gap-3\">\n    <label className=\"flex items-center gap-3 cursor-pointer\">\n      <input type=\"radio\" name=\"group\" className=\"w-4 h-4 border-gray-300 text-blue-600 focus:ring-blue-500\" />\n      <div>\n        <span className=\"text-sm font-medium text-gray-700\">Option 1</span>\n        <p className=\"text-sm text-gray-500\">Description text</p>\n      </div>\n    </label>\n  </div>\n</fieldset>"
+    },
+    {
+      "name": "Textarea",
+      "path": "base/textarea/textarea.tsx",
+      "description": "Multi-line text input with label and hint. Matches Untitled UI input styling.",
+      "props": ["label?", "placeholder?", "rows?", "error?", "value?", "onChange?"],
+      "tailwind_pattern": "<div className=\"flex flex-col gap-1.5\">\n  <label className=\"text-sm font-medium text-gray-700\">Description</label>\n  <textarea rows={4} placeholder=\"Enter a description...\" className=\"px-3.5 py-2.5 border border-gray-300 rounded-lg text-gray-900 text-base placeholder:text-gray-500 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none\"></textarea>\n  <p className=\"text-sm text-gray-500\">Write a short description.</p>\n</div>",
+      "error_state": "border-red-300 focus:ring-red-500 + <p className=\"text-sm text-red-600\">Error message</p>"
+    },
+    {
+      "name": "Dropdown",
+      "path": "base/dropdown/dropdown.tsx",
+      "description": "Action dropdown menu. Trigger button with popover list of actions.",
+      "props": ["items", "trigger?", "align?"],
+      "tailwind_pattern": "<div className=\"relative inline-block\">\n  <button className=\"px-4 py-2.5 bg-white text-gray-700 text-sm font-semibold border border-gray-300 rounded-lg shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500\">\n    Options\n    <svg className=\"w-5 h-5 ml-2 inline -mt-0.5\" fill=\"none\" stroke=\"currentColor\" viewBox=\"0 0 24 24\"><path strokeLinecap=\"round\" strokeLinejoin=\"round\" strokeWidth={2} d=\"M19 9l-7 7-7-7\" /></svg>\n  </button>\n  <div className=\"absolute right-0 mt-2 w-56 bg-white border border-gray-200 rounded-lg shadow-lg z-10 py-1\">\n    <button className=\"w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50\">Edit</button>\n    <button className=\"w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50\">Duplicate</button>\n    <div className=\"border-t border-gray-200 my-1\"></div>\n    <button className=\"w-full text-left px-4 py-2.5 text-sm text-red-600 hover:bg-red-50\">Delete</button>\n  </div>\n</div>"
+    },
+    {
+      "name": "Tooltip",
+      "path": "base/tooltip/tooltip.tsx",
+      "description": "Hover tooltip for additional info. Dark bg, white text, rounded-lg.",
+      "props": ["content", "children", "position?"],
+      "tailwind_pattern": "<div className=\"relative group inline-block\">\n  <span>Hover me</span>\n  <div className=\"absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-2 bg-gray-900 text-white text-xs font-medium rounded-lg shadow-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap\">\n    Tooltip text\n    <div className=\"absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-gray-900\"></div>\n  </div>\n</div>",
+      "variants": {
+        "top": "bottom-full mb-2",
+        "bottom": "top-full mt-2",
+        "left": "right-full mr-2",
+        "right": "left-full ml-2"
+      }
+    },
+    {
+      "name": "Tag",
+      "path": "base/tags/tags.tsx",
+      "description": "Removable tag/chip with optional close button. Use for filters, selected items.",
+      "props": ["children", "onRemove?", "variant?"],
+      "tailwind_pattern": "<span className=\"inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-sm font-medium bg-gray-100 text-gray-700 border border-gray-200\">\n  Label\n  <button className=\"ml-0.5 text-gray-400 hover:text-gray-600\">\n    <svg className=\"w-3.5 h-3.5\" fill=\"none\" stroke=\"currentColor\" viewBox=\"0 0 24 24\"><path strokeLinecap=\"round\" strokeLinejoin=\"round\" strokeWidth={2} d=\"M6 18L18 6M6 6l12 12\" /></svg>\n  </button>\n</span>",
+      "variants": {
+        "gray": "bg-gray-100 text-gray-700 border-gray-200",
+        "blue": "bg-blue-50 text-blue-700 border-blue-200",
+        "emerald": "bg-emerald-50 text-emerald-700 border-emerald-200",
+        "red": "bg-red-50 text-red-700 border-red-200",
+        "amber": "bg-amber-50 text-amber-700 border-amber-200",
+        "purple": "bg-purple-50 text-purple-700 border-purple-200"
+      }
+    },
+    {
+      "name": "Pagination",
+      "path": "application/pagination/pagination.tsx",
+      "description": "Page navigation with prev/next buttons and page numbers.",
+      "props": ["currentPage", "totalPages", "onPageChange?"],
+      "tailwind_pattern": "<nav className=\"flex items-center justify-between border-t border-gray-200 pt-4\">\n  <button className=\"px-3.5 py-2 text-sm font-semibold text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 shadow-sm\">\n    <svg className=\"w-5 h-5 mr-1 inline\" fill=\"none\" stroke=\"currentColor\" viewBox=\"0 0 24 24\"><path strokeLinecap=\"round\" strokeLinejoin=\"round\" strokeWidth={2} d=\"M15 19l-7-7 7-7\" /></svg>\n    Previous\n  </button>\n  <div className=\"flex gap-0.5\">\n    <button className=\"w-10 h-10 text-sm font-medium rounded-lg bg-blue-50 text-blue-600\">1</button>\n    <button className=\"w-10 h-10 text-sm font-medium rounded-lg text-gray-700 hover:bg-gray-50\">2</button>\n    <button className=\"w-10 h-10 text-sm font-medium rounded-lg text-gray-700 hover:bg-gray-50\">3</button>\n  </div>\n  <button className=\"px-3.5 py-2 text-sm font-semibold text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 shadow-sm\">\n    Next\n    <svg className=\"w-5 h-5 ml-1 inline\" fill=\"none\" stroke=\"currentColor\" viewBox=\"0 0 24 24\"><path strokeLinecap=\"round\" strokeLinejoin=\"round\" strokeWidth={2} d=\"M9 5l7 7-7 7\" /></svg>\n  </button>\n</nav>"
+    },
+    {
+      "name": "FileUpload",
+      "path": "application/file-upload/file-upload.tsx",
+      "description": "Drag-and-drop file upload area with icon, text, and browse button.",
+      "props": ["onUpload?", "accept?", "multiple?", "maxSize?"],
+      "tailwind_pattern": "<div className=\"border-2 border-dashed border-gray-300 rounded-xl p-8 text-center hover:border-blue-400 transition-colors cursor-pointer\">\n  <div className=\"mx-auto w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center mb-4\">\n    <svg className=\"w-6 h-6 text-gray-500\" fill=\"none\" stroke=\"currentColor\" viewBox=\"0 0 24 24\"><path strokeLinecap=\"round\" strokeLinejoin=\"round\" strokeWidth={2} d=\"M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12\" /></svg>\n  </div>\n  <p className=\"text-sm text-gray-600\"><span className=\"text-blue-600 font-semibold hover:text-blue-700\">Click to upload</span> or drag and drop</p>\n  <p className=\"text-xs text-gray-500 mt-1\">SVG, PNG, JPG or GIF (max. 10MB)</p>\n</div>"
+    },
+    {
+      "name": "LoadingIndicator",
+      "path": "application/loading-indicator/loading-indicator.tsx",
+      "description": "Loading spinner and skeleton placeholder. Use while content is loading.",
+      "props": ["size?", "type?"],
+      "tailwind_pattern": "<div className=\"flex items-center justify-center\">\n  <svg className=\"animate-spin w-8 h-8 text-blue-600\" fill=\"none\" viewBox=\"0 0 24 24\">\n    <circle className=\"opacity-25\" cx=\"12\" cy=\"12\" r=\"10\" stroke=\"currentColor\" strokeWidth=\"4\"></circle>\n    <path className=\"opacity-75\" fill=\"currentColor\" d=\"M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z\"></path>\n  </svg>\n</div>",
+      "skeleton": "<div className=\"animate-pulse space-y-4\">\n  <div className=\"h-4 bg-gray-200 rounded-lg w-3/4\"></div>\n  <div className=\"h-4 bg-gray-200 rounded-lg w-1/2\"></div>\n  <div className=\"h-32 bg-gray-200 rounded-xl\"></div>\n</div>"
+    },
+    {
+      "name": "Notification",
+      "path": "custom pattern",
+      "description": "Toast notification/alert banner. Success, error, warning, info variants with icon and dismiss.",
+      "props": ["title?", "message", "variant?", "onDismiss?"],
+      "tailwind_pattern": "<div className=\"flex items-start gap-3 p-4 bg-white border border-gray-200 rounded-xl shadow-lg max-w-sm\">\n  <div className=\"flex-shrink-0 w-10 h-10 rounded-full bg-emerald-100 flex items-center justify-center\">\n    <svg className=\"w-5 h-5 text-emerald-600\" fill=\"none\" stroke=\"currentColor\" viewBox=\"0 0 24 24\"><path strokeLinecap=\"round\" strokeLinejoin=\"round\" strokeWidth={2} d=\"M5 13l4 4L19 7\" /></svg>\n  </div>\n  <div className=\"flex-1\">\n    <p className=\"text-sm font-semibold text-gray-900\">Success</p>\n    <p className=\"text-sm text-gray-500 mt-0.5\">Your changes have been saved.</p>\n  </div>\n  <button className=\"text-gray-400 hover:text-gray-600\">\n    <svg className=\"w-5 h-5\" fill=\"none\" stroke=\"currentColor\" viewBox=\"0 0 24 24\"><path strokeLinecap=\"round\" strokeLinejoin=\"round\" strokeWidth={2} d=\"M6 18L18 6M6 6l12 12\" /></svg>\n  </button>\n</div>",
+      "variants": {
+        "success": "bg-emerald-100 text-emerald-600",
+        "error": "bg-red-100 text-red-600",
+        "warning": "bg-amber-100 text-amber-600",
+        "info": "bg-blue-100 text-blue-600"
+      }
     }
-  ]
+  ],
+  "layout_patterns": {
+    "page": "min-h-screen bg-gray-50",
+    "container": "max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8",
+    "section_header": "flex items-center justify-between mb-6",
+    "card_grid": "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6",
+    "sidebar_layout": "flex min-h-screen: sidebar w-64 bg-white border-r + main flex-1"
+  },
+  "icon_patterns": {
+    "note": "Use inline SVG for icons. Common icons below (stroke-based, 24x24 viewBox):",
+    "search": "<svg className=\"w-5 h-5\" fill=\"none\" stroke=\"currentColor\" viewBox=\"0 0 24 24\"><path strokeLinecap=\"round\" strokeLinejoin=\"round\" strokeWidth={2} d=\"M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z\" /></svg>",
+    "plus": "<svg className=\"w-5 h-5\" fill=\"none\" stroke=\"currentColor\" viewBox=\"0 0 24 24\"><path strokeLinecap=\"round\" strokeLinejoin=\"round\" strokeWidth={2} d=\"M12 4v16m8-8H4\" /></svg>",
+    "chevron_down": "<svg className=\"w-5 h-5\" fill=\"none\" stroke=\"currentColor\" viewBox=\"0 0 24 24\"><path strokeLinecap=\"round\" strokeLinejoin=\"round\" strokeWidth={2} d=\"M19 9l-7 7-7-7\" /></svg>",
+    "check": "<svg className=\"w-5 h-5\" fill=\"none\" stroke=\"currentColor\" viewBox=\"0 0 24 24\"><path strokeLinecap=\"round\" strokeLinejoin=\"round\" strokeWidth={2} d=\"M5 13l4 4L19 7\" /></svg>",
+    "arrow_up": "<svg className=\"w-4 h-4\" fill=\"none\" stroke=\"currentColor\" viewBox=\"0 0 24 24\"><path strokeLinecap=\"round\" strokeLinejoin=\"round\" strokeWidth={2} d=\"M5 10l7-7m0 0l7 7m-7-7v18\" /></svg>",
+    "arrow_down": "<svg className=\"w-4 h-4\" fill=\"none\" stroke=\"currentColor\" viewBox=\"0 0 24 24\"><path strokeLinecap=\"round\" strokeLinejoin=\"round\" strokeWidth={2} d=\"M19 14l-7 7m0 0l-7-7m7 7V3\" /></svg>",
+    "plane": "<svg className=\"w-5 h-5\" fill=\"none\" stroke=\"currentColor\" viewBox=\"0 0 24 24\"><path strokeLinecap=\"round\" strokeLinejoin=\"round\" strokeWidth={2} d=\"M12 19l9 2-9-18-9 18 9-2zm0 0v-8\" /></svg>",
+    "clock": "<svg className=\"w-5 h-5\" fill=\"none\" stroke=\"currentColor\" viewBox=\"0 0 24 24\"><circle cx=\"12\" cy=\"12\" r=\"10\" /><path strokeLinecap=\"round\" strokeLinejoin=\"round\" strokeWidth={2} d=\"M12 6v6l4 2\" /></svg>",
+    "filter": "<svg className=\"w-5 h-5\" fill=\"none\" stroke=\"currentColor\" viewBox=\"0 0 24 24\"><path strokeLinecap=\"round\" strokeLinejoin=\"round\" strokeWidth={2} d=\"M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z\" /></svg>"
+  }
 }

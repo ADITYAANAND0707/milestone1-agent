@@ -9,7 +9,7 @@ These guidelines are injected into the AI system prompt so all generated code fo
 - Use **function components** with hooks — no class components
 - Use **PascalCase** for component names (e.g., `LoginForm`, `DashboardCard`)
 - Use **camelCase** for variables, functions, and props (e.g., `handleClick`, `isLoading`)
-- Keep components **compact** — under 80 lines when possible
+- Keep components **compact** — under 150 lines when possible
 - One component per file / code block
 - Always end generated code with `root.render(React.createElement(ComponentName));`
 
@@ -18,14 +18,17 @@ These guidelines are injected into the AI system prompt so all generated code fo
 - Use **Tailwind CSS** utility classes exclusively — no inline styles, no CSS-in-JS
 - Use **design tokens** from `tokens.json` for colors, spacing, typography, and border radius
 - Follow the project color palette:
-  - Primary: `sky-500` (#0ea5e9) through `sky-700` (#0369a1)
-  - Neutral: `neutral-50` (#fafafa) through `neutral-900` (#171717)
+  - Primary/Blue: `blue-500` (#2E90FA) through `blue-700` (#175CD3)
+  - Gray: `gray-50` (#F9FAFB) through `gray-900` (#101828)
+  - Success: `emerald-500` (#12B76A) — use for positive status
+  - Error: `red-500` (#F04438) — use for errors/destructive
+  - Warning: `amber-500` (#F79009) — use for warnings
 - Use responsive classes when generating layouts (`sm:`, `md:`, `lg:` prefixes)
 - Dark mode: use `dark:` variant classes where appropriate
 
 ## 3. Accessibility
 
-- All interactive elements must have clear **focus states** (`focus:ring-2 focus:ring-sky-500`)
+- All interactive elements must have clear **focus states** (`focus:ring-2 focus:ring-blue-500`)
 - Use **semantic HTML** elements (`<nav>`, `<main>`, `<section>`, `<button>`, `<form>`)
 - All images must have `alt` attributes
 - Form inputs must have associated `<label>` elements
@@ -99,4 +102,4 @@ When generating multiple variants:
 - Use **different component names** for each variant (e.g., `CardMinimal`, `CardBold`)
 - Each must end with its own `root.render(React.createElement(VariantName));`
 - Label each with `## Variant N: StyleName` heading
-- Keep each variant under 60 lines
+- Keep each variant under 80 lines
