@@ -4,7 +4,7 @@ Multi-agent system that generates production-quality React/JSX UI components fro
 
 Built with **LangGraph** (4 agents) + **Claude Sonnet** (code gen) + **GPT-4o-mini** (classify/discover/chat) + **RAG** (design system knowledge).
 
-![Pipeline Flow](docs/pipeline-flow-diagram.png)
+![Pipeline Flow](docs/plan.excalidraw.png))
 
 ---
 
@@ -114,7 +114,6 @@ cd chatbot
 python server.py
 ```
 
-Open **http://localhost:3851**
 
 ### Windows: Kill old processes before restart
 
