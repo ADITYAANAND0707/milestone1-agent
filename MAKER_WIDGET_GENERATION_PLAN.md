@@ -85,7 +85,7 @@ Approved widgets are registered; "Save and Deploy" creates a checkpoint.
 
 | Week | Focus | Key outcome | Friday demo |
 |------|--------|-------------|-------------|
-| **1** (23–27 Feb) | KT + integration research | Contract v0 agreed; we know how Maker will call us and what we return | KT sign-off + contract v0 approved |
+| **1** (23–27 Feb) | KT + integration research |  v0 agreed; we know how Maker will call us and what we return | KT sign-off + contract v0 approved |
 | **2** (2–6 Mar) | Vertical slice | Working endpoint: Web → manifest; Voice → skip. Review UI prototype | E2E demo: Web vs Voice/WhatsApp |
 | **3** (9–13 Mar) | Maker hook | Maker triggers our service; review list comes from real response | Review Widgets from real service |
 | **4** (16–20 Mar) | Governance + quality | Regenerate single widgets; audit log; QA/a11y gates; metrics | Iterate and regen only impacted widgets |
@@ -155,9 +155,10 @@ Approved widgets are registered; "Save and Deploy" creates a checkpoint.
 | Ownership | Section 5 |
 | Risks | Section 6 |
 | API and systems detail | Section 7 |
-| Full visual plan | `Maker_Widget_Generation_Plan.excalidraw` |
+| Full visual plan | `[Maker_Widget_Generation_Plan.excalidraw](https://excalidraw.com/#json=cGuFFMmmSD6QHAU27tk0D,PCP-8y3k0_mdIKzV1_W4YQ)` |
 
 ---
 
 *Document version: 2.0 Aligned with 5-Week Plan docx, Maker Introduction, and PROJECT_CONTEXT.md.*
+
 
