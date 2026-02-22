@@ -155,10 +155,11 @@ Approved widgets are registered; "Save and Deploy" creates a checkpoint.
 | Ownership | Section 5 |
 | Risks | Section 6 |
 | API and systems detail | Section 7 |
-| Full visual plan | `[Maker_Widget_Generation_Plan.excalidraw](https://excalidraw.com/#json=cGuFFMmmSD6QHAU27tk0D,PCP-8y3k0_mdIKzV1_W4YQ)` |
+| Full visual plan | [Maker_Widget_Generation_Plan.excalidraw](https://excalidraw.com/#json=cGuFFMmmSD6QHAU27tk0D,PCP-8y3k0_mdIKzV1_W4YQ) |
 
 ---
 
 *Document version: 2.0 Aligned with 5-Week Plan docx, Maker Introduction, and PROJECT_CONTEXT.md.*
+
 
 
