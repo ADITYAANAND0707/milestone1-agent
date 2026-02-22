@@ -18,7 +18,7 @@
 
 ---
 
-## 1. What we’re building (plain language)
+## 1. What we’re building
 
 - **Maker** is the platform where apps are created from a Business Requirements Document (BRD): goals, data, agents, tools, and **role-based dashboards**.
 - Today, dashboard **widgets** (e.g. KPI cards, tables, search) are either hand-built or missing. We’re adding **automated widget generation** that:
@@ -56,7 +56,7 @@ Approved widgets are registered; "Save and Deploy" creates a checkpoint.
 
 ## 3. Priorities (what matters most)
 
-### Must have (tech)
+### Must have 1.o
 
 - **Web-only gating** — No pipeline invocation for non-Web channels.
 - **Widget Manifest** — Structured response: library vs generated, with stable IDs, code, and QA/a11y per widget.
@@ -64,7 +64,7 @@ Approved widgets are registered; "Save and Deploy" creates a checkpoint.
 - **Selective regeneration** — Change one widget without regenerating the whole dashboard.
 - **Contract-first** — Clear input/output so Maker and our service can integrate without guessing.
 
-### Must have (non-tech)
+### Must have 2.o 
 
 - **Review before use** — Every new widget is previewed and explicitly approved/rejected/requested for changes.
 - **Checkpoints** — Use Maker’s “Save and Deploy” after major steps so work is recoverable.
@@ -106,7 +106,7 @@ Approved widgets are registered; "Save and Deploy" creates a checkpoint.
 
 ---
 
-## 6. Risks and mitigations (short)
+## 6. Risks and mitigations 
 
 | Severity | Risk | Mitigation |
 |----------|------|------------|
@@ -118,9 +118,9 @@ Approved widgets are registered; "Save and Deploy" creates a checkpoint.
 
 ---
 
-## 7. Technical reference (for engineers)
+## 7. Technical reference 
 
-### Architecture (one sentence each)
+### Architecture 
 
 - **Maker Platform** — BRD, Shadow Panel, roles, dashboards, “Save and Deploy,” keyword triggers.
 - **Maker Adapter** — Thin connector: channel check, context parsing, schema mapping, widget registration.
@@ -159,4 +159,5 @@ Approved widgets are registered; "Save and Deploy" creates a checkpoint.
 
 ---
 
-*Document version: 2.0 (rectified). Aligned with 5-Week Plan docx, Maker Introduction, and PROJECT_CONTEXT.md.*
+*Document version: 2.0 Aligned with 5-Week Plan docx, Maker Introduction, and PROJECT_CONTEXT.md.*
+
