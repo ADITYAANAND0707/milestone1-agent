@@ -25,33 +25,63 @@ _RE_INPUT_CLASS = re.compile(r'<input[^>]*className="([^"]*)"')
 _RE_ICON_BUTTON = re.compile(r"<button[^>]*>\s*<(?:svg|img|Icon)", re.IGNORECASE)
 _RE_IMG_TAG = re.compile(r"<img[^>]*>", re.IGNORECASE)
 
+# ── Library file mapping ──
+_LIB_FILES = {
+    "untitledui": {"catalog": "catalog.json", "tokens": "tokens.json"},
+    "metafore": {"catalog": "metafore_catalog.json", "tokens": "metafore_tokens.json"},
+}
+
 # ── Mtime-based JSON cache ──
-_json_cache: dict[str, dict] = {}  # {name: {"mtime": float, "data": dict}}
+_json_cache: dict[str, dict] = {}  # {cache_key: {"mtime": float, "data": dict}}
+
+# Active library (set from orchestrator state before tool calls)
+_active_library = "untitledui"
 
 
-def _load_json(name: str):
-    """Load a JSON file from design_system/ with mtime-based caching."""
-    path = DESIGN_SYSTEM_DIR / f"{name}.json"
+def set_active_library(library: str):
+    """Set the active design system library for tool calls."""
+    global _active_library
+    _active_library = library or "untitledui"
+
+
+def _load_json(name: str, library: str = None):
+    """Load a JSON file from design_system/ with mtime-based caching.
+    Uses library-specific files when available."""
+    lib = library or _active_library
+
+    if lib == "both":
+        merged = _load_json(name, "untitledui")
+        extra = _load_json(name, "metafore")
+        if name == "catalog":
+            result = dict(merged)
+            result["components"] = list(merged.get("components", [])) + list(extra.get("components", []))
+            result["_lookup"] = {c["name"].lower(): c for c in result["components"]}
+            return result
+        return merged if merged else extra
+
+    files = _LIB_FILES.get(lib, _LIB_FILES["untitledui"])
+    fname = files.get(name, f"{name}.json")
+    path = DESIGN_SYSTEM_DIR / fname
     if not path.exists():
         return {}
 
+    cache_key = f"{lib}_{name}"
     try:
         current_mtime = path.stat().st_mtime
     except OSError:
         return {}
 
-    cached = _json_cache.get(name)
+    cached = _json_cache.get(cache_key)
     if cached and cached["mtime"] == current_mtime:
         return cached["data"]
 
     with open(path, encoding="utf-8") as f:
         data = json.load(f)
 
-    # Build lookup dict for catalog components (O(1) search by name)
     if name == "catalog" and "components" in data:
         data["_lookup"] = {c["name"].lower(): c for c in data["components"]}
 
-    _json_cache[name] = {"mtime": current_mtime, "data": data}
+    _json_cache[cache_key] = {"mtime": current_mtime, "data": data}
     return data
 
 
@@ -59,8 +89,8 @@ def _load_json(name: str):
 
 @tool
 def list_components() -> str:
-    """List all components in the Untitled UI design system.
-    Returns name, description, and props for each of the 24 components."""
+    """List all components in the active design system library.
+    Returns name, description, and props for each component."""
     data = _load_json("catalog")
     components = data.get("components", [])
     return json.dumps(components, indent=2)
@@ -88,7 +118,7 @@ def get_component_spec(component_name: str) -> str:
 
 @tool
 def get_design_tokens() -> str:
-    """Get design tokens: colors, typography, spacing, border radius.
+    """Get design tokens for the active library: colors, typography, spacing, border radius.
     Use these values when writing Tailwind classes in generated code."""
     data = _load_json("tokens")
     return json.dumps(data, indent=2)

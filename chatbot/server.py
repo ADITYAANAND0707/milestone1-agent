@@ -113,20 +113,43 @@ def _load_coding_guidelines():
             pass
     return ""
 
-def _load_design_system():
+_LIB_FILES = {
+    "untitledui": {"catalog": "catalog.json", "tokens": "tokens.json"},
+    "metafore": {"catalog": "metafore_catalog.json", "tokens": "metafore_tokens.json"},
+}
+
+def _load_design_system(library="untitledui"):
     ds_dir = ROOT / "design_system"
     out = {"tokens": {}, "catalog": {"components": []}}
-    for name in ("tokens", "catalog"):
-        p = ds_dir / f"{name}.json"
-        try:
-            if p.exists():
-                with open(p, encoding="utf-8") as f:
-                    data = json.load(f)
-                    out[name] = data if isinstance(data, dict) else {"components": data} if name == "catalog" else data
-            if name == "catalog" and "components" not in out.get("catalog", {}):
-                out.setdefault("catalog", {})["components"] = []
-        except Exception:
-            pass
+
+    libs = list(_LIB_FILES.keys()) if library == "both" else [library if library in _LIB_FILES else "untitledui"]
+    all_components = []
+    merged_tokens = {}
+
+    for lib in libs:
+        files = _LIB_FILES[lib]
+        for name in ("tokens", "catalog"):
+            p = ds_dir / files[name]
+            try:
+                if p.exists():
+                    with open(p, encoding="utf-8") as f:
+                        data = json.load(f)
+                    if name == "catalog":
+                        comps = data.get("components", []) if isinstance(data, dict) else data
+                        for c in comps:
+                            c["_library"] = lib
+                        all_components.extend(comps)
+                    else:
+                        if not merged_tokens:
+                            merged_tokens = data
+                        else:
+                            for k, v in data.get("colors", {}).items():
+                                merged_tokens.setdefault("colors", {})[f"{k}_{lib}"] = v
+            except Exception:
+                pass
+
+    out["catalog"] = {"components": all_components}
+    out["tokens"] = merged_tokens
     return out
 
 def _build_system_prompt():
@@ -322,12 +345,15 @@ PREVIEW_HTML_TPL = """<!DOCTYPE html>
   </script>
   <style>
     body { margin: 0; font-family: 'Inter', ui-sans-serif, system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
-    #untitled-ui-badge { position: fixed; bottom: 8px; right: 8px; background: rgba(21,112,239,0.1); color: #1570EF; font-size: 10px; font-weight: 600; padding: 2px 8px; border-radius: 9999px; letter-spacing: 0.5px; z-index: 9999; pointer-events: none; font-family: Inter, sans-serif; }
+    #ds-badge { position: fixed; bottom: 8px; right: 8px; font-size: 10px; font-weight: 600; padding: 2px 8px; border-radius: 9999px; letter-spacing: 0.5px; z-index: 9999; pointer-events: none; font-family: Inter, sans-serif; }
+    #ds-badge.untitledui { background: rgba(21,112,239,0.1); color: #1570EF; }
+    #ds-badge.metafore { background: rgba(127,86,217,0.1); color: #7F56D9; }
+    #ds-badge.both { background: rgba(99,102,241,0.1); color: #6366F1; }
   </style>
 </head>
 <body>
   <div id="root"></div>
-  <div id="untitled-ui-badge">Untitled UI</div>
+  <div id="ds-badge" class="{library_class}">{library_label}</div>
   <script>
     window.__PREVIEW_ERRORS = [];
     window.onerror = function(msg, url, line, col, err) {
@@ -494,7 +520,9 @@ class Handler(BaseHTTPRequestHandler):
 
         if path == "/api/catalog":
             try:
-                data = _load_design_system()
+                qs = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+                lib = qs.get("library", ["untitledui"])[0]
+                data = _load_design_system(lib)
                 if not isinstance(data.get("catalog"), dict):
                     data["catalog"] = {"components": data.get("catalog") or []}
                 self.send_json(data)
@@ -551,6 +579,8 @@ class Handler(BaseHTTPRequestHandler):
 
         message = data.get("message", "").strip()
         history = data.get("history", [])
+        intent = data.get("intent", "").strip() or message
+        library = data.get("library", "untitledui").strip() or "untitledui"
 
         if not message:
             self.send_sse_error("Message is required")
@@ -561,14 +591,14 @@ class Handler(BaseHTTPRequestHandler):
             self.send_sse_error("OPENAI_API_KEY not set. Add it to .env file.")
             return
 
-        # Smart routing: full classify in one call, then skip pipeline classify
+        # Smart routing: classify on clean intent, pass full message to pipeline
         if os.environ.get("USE_LANGGRAPH", "").lower() == "true":
-            workflow = _fast_classify(message)
-            print(f"[chatbot] Classified as: {workflow}")
+            workflow = _fast_classify(intent)
+            print(f"[chatbot] Classified as: {workflow} (intent: {intent[:80]}, library: {library})")
             if workflow == "chat":
                 self._handle_direct_chat(message, history, api_key)
             else:
-                self._handle_langgraph_stream(message, history, workflow=workflow)
+                self._handle_langgraph_stream(message, history, workflow=workflow, library=library)
             return
 
         # Fallback: direct Claude streaming (USE_LANGGRAPH=false)
@@ -733,7 +763,7 @@ Keep each variant under 60 lines. Include realistic sample data."""
             except Exception:
                 pass
 
-    def _handle_langgraph_stream(self, message, history, workflow=""):
+    def _handle_langgraph_stream(self, message, history, workflow="", library="untitledui"):
         """Route the request through the LangGraph multi-agent system.
         Passes pre-classified workflow to skip the classify LLM call in the pipeline."""
         import asyncio
@@ -754,7 +784,7 @@ Keep each variant under 60 lines. Include realistic sample data."""
 
         async def _stream():
             try:
-                async for event in run_agent_stream(message, history, workflow=workflow):
+                async for event in run_agent_stream(message, history, workflow=workflow, library=library):
                     chunk = json.dumps(event)
                     self.wfile.write(f"data: {chunk}\n\n".encode("utf-8"))
                     self.wfile.flush()
@@ -832,11 +862,9 @@ Keep each variant under 60 lines. Include realistic sample data."""
         try:
             data = json.loads(body) if body else {}
             code = (data.get("code") or "").strip()
+            library = (data.get("library") or "untitledui").strip()
 
-            # Strip import statements (React/ReactDOM are global via CDN)
             code = re.sub(r'^import\s+.*?[;\n]', '', code, flags=re.MULTILINE)
-
-            # Strip duplicate root declaration (the template already has it)
             code = re.sub(
                 r'const\s+root\s*=\s*ReactDOM\.createRoot\s*\([^)]*\)\s*;?\s*',
                 '', code
@@ -854,7 +882,8 @@ Keep each variant under 60 lines. Include realistic sample data."""
                         code = code + "\nroot.render(React.createElement(" + name + "));"
                         break
             escaped = code.replace("\\", "\\\\").replace("</script>", "<\\/script>")
-            html = PREVIEW_HTML_TPL.replace("{code}", escaped)
+            lib_labels = {"untitledui": "Untitled UI", "metafore": "Metafore", "both": "Untitled UI + Metafore"}
+            html = PREVIEW_HTML_TPL.replace("{code}", escaped).replace("{library_class}", library).replace("{library_label}", lib_labels.get(library, "Untitled UI"))
             self.send_response(200)
             self.send_header("Content-Type", "text/html; charset=utf-8")
             self.send_header("Access-Control-Allow-Origin", "*")

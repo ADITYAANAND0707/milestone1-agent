@@ -20,29 +20,43 @@ logger = logging.getLogger(__name__)
 ROOT = Path(__file__).resolve().parent.parent
 DESIGN_SYSTEM_DIR = ROOT / "design_system"
 
-# Cached singletons
-_catalog_cache = None
-_formatted_prompt_cache = None
+_LIB_FILES = {
+    "untitledui": "catalog.json",
+    "metafore": "metafore_catalog.json",
+}
+
+_catalog_cache: dict[str, dict] = {}
+_formatted_prompt_cache: dict[str, str] = {}
 _discovery_model = None
 
 
-def _load_catalog() -> dict:
-    """Load catalog.json once and cache it."""
-    global _catalog_cache
-    if _catalog_cache is not None:
-        return _catalog_cache
-    path = DESIGN_SYSTEM_DIR / "catalog.json"
+def _load_catalog(library: str = "untitledui") -> dict:
+    """Load catalog JSON for the given library (cached per library)."""
+    if library == "both":
+        merged = {"components": []}
+        for lib in ("untitledui", "metafore"):
+            cat = _load_catalog(lib)
+            merged["components"].extend(cat.get("components", []))
+            for k in ("layout_patterns", "icon_patterns"):
+                if cat.get(k):
+                    merged.setdefault(k, {}).update(cat[k])
+        return merged
+
+    if library in _catalog_cache:
+        return _catalog_cache[library]
+    fname = _LIB_FILES.get(library, "catalog.json")
+    path = DESIGN_SYSTEM_DIR / fname
     if path.exists():
         with open(path, encoding="utf-8") as f:
-            _catalog_cache = json.load(f)
+            _catalog_cache[library] = json.load(f)
     else:
-        _catalog_cache = {"components": []}
-    return _catalog_cache
+        _catalog_cache[library] = {"components": []}
+    return _catalog_cache[library]
 
 
-def _build_catalog_summary() -> str:
+def _build_catalog_summary(library: str = "untitledui") -> str:
     """Build a compact summary of all components with their tailwind patterns."""
-    catalog = _load_catalog()
+    catalog = _load_catalog(library)
     parts = []
     for comp in catalog.get("components", []):
         name = comp.get("name", "")
@@ -63,13 +77,13 @@ def _build_catalog_summary() -> str:
     return "\n\n".join(parts)
 
 
-_DISCOVERY_TEMPLATE = """You are the component discovery expert for the Untitled UI design system.
+_DISCOVERY_TEMPLATE = """You are the component discovery expert for the {lib_label} design system.
 
 ## Your Job
 Given a user request, pick the relevant components from the catalog below and return
 a composition plan with EXACT tailwind classes for each.
 
-## Available Components (24 total)
+## Available Components
 {catalog}
 
 ## Output Format
@@ -78,25 +92,18 @@ Return a short composition plan:
 - Describe the layout structure
 - Be concise — the Generator reads this directly
 
-Example:
-"Components needed:
-- **Card** (with_header): bg-white border border-gray-200 rounded-xl shadow-sm
-- **Table**: w-full, thead bg-gray-50, tbody divide-y divide-gray-200, rows hover:bg-gray-50
-- **Badge** success: bg-emerald-50 text-emerald-700 rounded-full
-- **Button** primary: bg-blue-600 text-white rounded-lg shadow-sm
-Layout: min-h-screen bg-gray-50, max-w-6xl mx-auto px-6 py-8"
-
 Only recommend components from the catalog. Do NOT invent components."""
 
 
-def _get_formatted_prompt() -> str:
-    """Get the discovery system prompt with catalog injected (cached)."""
-    global _formatted_prompt_cache
-    if _formatted_prompt_cache is not None:
-        return _formatted_prompt_cache
-    catalog_summary = _build_catalog_summary()
-    _formatted_prompt_cache = _DISCOVERY_TEMPLATE.replace("{catalog}", catalog_summary)
-    return _formatted_prompt_cache
+def _get_formatted_prompt(library: str = "untitledui") -> str:
+    """Get the discovery system prompt with catalog injected (cached per library)."""
+    if library in _formatted_prompt_cache:
+        return _formatted_prompt_cache[library]
+    catalog_summary = _build_catalog_summary(library)
+    lib_label = {"untitledui": "Untitled UI", "metafore": "Metafore", "vernam": "Vernam", "both": "Untitled UI + Metafore"}.get(library, library)
+    prompt = _DISCOVERY_TEMPLATE.replace("{catalog}", catalog_summary).replace("{lib_label}", lib_label)
+    _formatted_prompt_cache[library] = prompt
+    return prompt
 
 
 def _get_discovery_model():
@@ -108,15 +115,16 @@ def _get_discovery_model():
     return _discovery_model
 
 
-async def run_discovery(user_request: str, has_previous_code: bool = False) -> str:
+async def run_discovery(user_request: str, has_previous_code: bool = False, library: str = "untitledui") -> str:
     """Run component discovery as a single direct LLM call.
 
     Returns the composition plan string.
     """
     model = _get_discovery_model()
-    system_prompt = _get_formatted_prompt()
+    system_prompt = _get_formatted_prompt(library)
+    lib_label = {"untitledui": "Untitled UI", "metafore": "Metafore", "vernam": "Vernam", "both": "Untitled UI + Metafore"}.get(library, library)
 
-    context = f"Find all relevant Untitled UI components for: {user_request}"
+    context = f"Find all relevant {lib_label} components for: {user_request}"
     if has_previous_code:
         context += ("\n\nNote: The user is modifying an existing component. "
                     "Include the same components plus any new ones needed.")

@@ -153,11 +153,14 @@
   configureMarked();
 
   // ── Streaming API (supports status + thinking events from multi-agent system) ──
-  async function streamChat(message, history, onChunk, onDone, onError, signal, onStatus, onThinking) {
+  async function streamChat(message, history, onChunk, onDone, onError, signal, onStatus, onThinking, intent, library) {
     try {
+      const payload = { message, history };
+      if (intent) payload.intent = intent;
+      if (library) payload.library = library;
       const response = await fetch('/api/chat/stream', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message, history }), signal,
+        body: JSON.stringify(payload), signal,
       });
       if (!response.ok) { onError(await response.text() || `HTTP ${response.status}`); return; }
       const reader = response.body.getReader();
@@ -290,7 +293,7 @@
   }
 
   // ── Sidebar ──
-  function Sidebar({ conversations, activeId, onSelect, onNewChat, onDelete, isOpen, onClose }) {
+  function Sidebar({ conversations, activeId, onSelect, onNewChat, onDelete, isOpen, onClose, selectedLibrary, onLibraryChange, theme, onToggleTheme }) {
     const isMobile = window.innerWidth <= 768;
     const groups = useMemo(() => {
       const today = new Date(); today.setHours(0, 0, 0, 0);
@@ -307,6 +310,12 @@
       return result;
     }, [conversations]);
 
+    const libTag = (lib) => {
+      if (!lib) return null;
+      const labels = { untitledui: 'UI', metafore: 'MF', both: 'B' };
+      return e('span', { className: `conv-lib-tag ${lib}` }, labels[lib] || '');
+    };
+
     const grp = (label, items) => {
       if (!items.length) return null;
       return e(React.Fragment, { key: label },
@@ -314,6 +323,7 @@
         items.map(c => e('button', { key: c.id, className: `conv-item ${c.id === activeId ? 'active' : ''}`,
           onClick: () => { onSelect(c.id); if (isMobile) onClose(); } },
           e('span', { className: 'conv-item-title' }, c.title || 'New conversation'),
+          libTag(c.library),
           e('button', { className: 'conv-item-delete', title: 'Delete', onClick: (ev) => { ev.stopPropagation(); onDelete(c.id); } }, I.trash)
         ))
       );
@@ -325,13 +335,28 @@
         e('div', { className: 'sidebar-header' },
           e('button', { className: 'new-chat-btn', onClick: () => { onNewChat(); if (isMobile) onClose(); } }, I.plus, ' New chat')
         ),
+        e('div', { className: 'library-selector' },
+          e('div', { className: 'library-selector-label' }, 'Design System'),
+          e('div', { className: 'library-selector-btns' },
+            [{ id: 'untitledui', label: 'Untitled UI' }, { id: 'metafore', label: 'Metafore' }, { id: 'both', label: 'Both' }].map(lib =>
+              e('button', { key: lib.id, className: `library-btn ${selectedLibrary === lib.id ? 'active' : ''}`,
+                onClick: () => onLibraryChange(lib.id) }, lib.label)))),
         e('div', { className: 'conversations-list' },
           grp('Today', groups.today), grp('Yesterday', groups.yesterday),
           grp('Previous 7 days', groups.week), grp('Older', groups.older),
           conversations.length === 0 && e('div', { style: { padding: 14, color: 'var(--text-muted)', fontSize: 12, textAlign: 'center' } }, 'No conversations yet')
         ),
         e('div', { className: 'sidebar-footer' },
-          e('div', { className: 'sidebar-footer-info' }, 'Powered by ', e('span', null, '4-Agent LangGraph'), ' pipeline'))
+          e('button', { className: 'theme-toggle-btn', onClick: onToggleTheme, title: theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode' },
+            e('div', { className: `theme-toggle-track ${theme}` },
+              e('div', { className: 'theme-toggle-thumb' },
+                theme === 'dark'
+                  ? e('svg', { width: 12, height: 12, viewBox: '0 0 24 24', fill: 'currentColor' },
+                      e('path', { d: 'M21.752 15.002A9.718 9.718 0 0118 15.75c-5.385 0-9.75-4.365-9.75-9.75 0-1.33.266-2.597.748-3.752A9.753 9.753 0 003 11.25C3 16.635 7.365 21 12.75 21a9.753 9.753 0 009.002-5.998z' }))
+                  : e('svg', { width: 12, height: 12, viewBox: '0 0 24 24', fill: 'currentColor' },
+                      e('path', { d: 'M12 2.25a.75.75 0 01.75.75v2.25a.75.75 0 01-1.5 0V3a.75.75 0 01.75-.75zM7.5 12a4.5 4.5 0 119 0 4.5 4.5 0 01-9 0zM18.894 6.166a.75.75 0 00-1.06-1.06l-1.591 1.59a.75.75 0 101.06 1.061l1.591-1.59zM21.75 12a.75.75 0 01-.75.75h-2.25a.75.75 0 010-1.5H21a.75.75 0 01.75.75zM17.834 18.894a.75.75 0 001.06-1.06l-1.59-1.591a.75.75 0 10-1.061 1.06l1.59 1.591zM12 18a.75.75 0 01.75.75V21a.75.75 0 01-1.5 0v-2.25A.75.75 0 0112 18zM7.758 17.303a.75.75 0 00-1.061-1.06l-1.591 1.59a.75.75 0 001.06 1.061l1.591-1.59zM6 12a.75.75 0 01-.75.75H3a.75.75 0 010-1.5h2.25A.75.75 0 016 12zM6.697 7.757a.75.75 0 001.06-1.06l-1.59-1.591a.75.75 0 00-1.061 1.06l1.59 1.591z' })))),
+            e('span', { className: 'theme-toggle-label' }, theme === 'dark' ? 'Dark' : 'Light')),
+          e('div', { className: 'sidebar-footer-info' }, 'Powered by ', e('span', null, 'Metafore'), ' design system'))
       )
     );
   }
@@ -346,7 +371,7 @@
     ];
     return e('div', { className: 'welcome-screen' },
       e('div', { className: 'welcome-logo' },
-        e('svg', { width: 24, height: 24, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round' },
+        e('svg', { width: 28, height: 28, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 1.8, strokeLinecap: 'round', strokeLinejoin: 'round' },
           e('path', { d: 'M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z' }))),
       e('h1', { className: 'welcome-title' }, 'Design System Agent'),
       e('p', { className: 'welcome-subtitle' }, 'Multi-agent system: Orchestrator, Discovery, Generator & QA work together. Ask for UI components and watch the agents collaborate in real time.'),
@@ -373,7 +398,7 @@
   }
 
   // ── Fullscreen Preview Modal (supports single or multi-variant) ──
-  function PreviewModal({ previewHtml, code, codes, labels, onClose, onCopyCode }) {
+  function PreviewModal({ previewHtml, code, codes, labels, onClose, onCopyCode, library }) {
     const isMulti = codes && codes.length > 1;
     const [iframeLoaded, setIframeLoaded] = useState(false);
     const [iframesLoaded, setIframesLoaded] = useState(() => isMulti ? codes.map(() => false) : []);
@@ -398,7 +423,7 @@
     useEffect(() => {
       if (!isMulti) return;
       codes.forEach((c, i) => {
-        fetch('/api/preview', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code: c }) })
+        fetch('/api/preview', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code: c, library: library || 'untitledui' }) })
           .then(r => r.text())
           .then(html => { setMultiHtmls(prev => { const n = [...prev]; n[i] = html; return n; }); })
           .catch(() => {});
@@ -411,7 +436,7 @@
     const [fetchedHtml, setFetchedHtml] = useState(null);
     useEffect(() => {
       if (!isMulti && !previewHtml && code) {
-        fetch('/api/preview', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code }) })
+        fetch('/api/preview', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code, library: library || 'untitledui' }) })
           .then(r => r.text())
           .then(html => { if (html && html.length > 50) setFetchedHtml(html); })
           .catch(() => {});
@@ -470,7 +495,7 @@
   }
 
   // ── Inline Preview (for assistant messages with code) ──
-  function InlinePreview({ code, onCopyCode }) {
+  function InlinePreview({ code, onCopyCode, library }) {
     const [previewHtml, setPreviewHtml] = useState(null);
     const [previewError, setPreviewError] = useState(false);
     const [codeExpanded, setCodeExpanded] = useState(false);
@@ -489,7 +514,7 @@
           const r = await fetch('/api/preview', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ code }),
+            body: JSON.stringify({ code, library: library || 'untitledui' }),
           });
           if (cancelled) return;
           if (!r.ok) { setPreviewError(true); return; }
@@ -513,7 +538,7 @@
       setPreviewError(false);
       setPreviewHtml(null);
       setIframeLoaded(false);
-      fetch('/api/preview', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code }) })
+      fetch('/api/preview', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code, library: library || 'untitledui' }) })
         .then(r => { if (!r.ok) throw new Error(); return r.text(); })
         .then(html => { if (html && html.length > 50) setPreviewHtml(html); else setPreviewError(true); })
         .catch(() => setPreviewError(true));
@@ -549,14 +574,14 @@
         codeExpanded && e('pre', { className: 'msg-code-pre' }, code)),
       // Fullscreen modal
       modalOpen && previewHtml && e(PreviewModal, {
-        previewHtml, code, onCopyCode,
+        previewHtml, code, onCopyCode, library,
         onClose: () => setModalOpen(false),
       })
     );
   }
 
   // ── Multi-Preview (side-by-side variants with expand) ──
-  function MultiPreview({ codes, labels, onCopyCode }) {
+  function MultiPreview({ codes, labels, onCopyCode, library }) {
     const [expandAll, setExpandAll] = useState(false);
     const [expandSingle, setExpandSingle] = useState(null); // index
 
@@ -572,16 +597,15 @@
             e('div', { className: 'multi-preview-card-actions' },
               e('button', { onClick: () => setExpandSingle(i), title: 'Expand this variant' }, '\u26F6'),
               e('button', { onClick: () => onCopyCode && onCopyCode(code) }, 'Copy'))),
-          e(InlinePreview, { code, onCopyCode, compact: true })
+          e(InlinePreview, { code, onCopyCode, compact: true, library })
         ))),
       // Expand all modal (multi)
       expandAll && e(PreviewModal, {
-        codes, labels, onCopyCode,
+        codes, labels, onCopyCode, library,
         onClose: () => setExpandAll(false),
       }),
-      // Expand single variant modal
       expandSingle !== null && e(PreviewModal, {
-        previewHtml: null, code: codes[expandSingle], onCopyCode,
+        previewHtml: null, code: codes[expandSingle], onCopyCode, library,
         onClose: () => setExpandSingle(null),
       })
     );
@@ -593,7 +617,6 @@
     const ref = useRef(null);
     if (!content) return null;
 
-    // Auto-scroll thinking content to bottom when active
     useEffect(() => {
       if (expanded && ref.current) {
         ref.current.scrollTop = ref.current.scrollHeight;
@@ -601,13 +624,32 @@
     }, [content, expanded]);
 
     const lineCount = (content.match(/\n/g) || []).length + 1;
-    const charCount = content.length;
-    const summary = isActive ? 'Thinking...' : `Thought for ${lineCount} lines`;
+
+    const briefSummary = useMemo(() => {
+      if (isActive) return null;
+      const lines = content.split('\n').map(l => l.trim()).filter(Boolean);
+      const keyPhrases = [];
+      for (const line of lines) {
+        if (line.startsWith('#') || line.startsWith('**') || line.startsWith('-') || line.startsWith('*')) {
+          const clean = line.replace(/^[#*\-\s]+/, '').replace(/\*+/g, '').trim();
+          if (clean.length > 8 && clean.length < 120) keyPhrases.push(clean);
+        } else if (/^(analyz|discover|generat|check|build|creat|design|implement|look|fetch|search|evaluat|review)/i.test(line)) {
+          const clean = line.length > 100 ? line.slice(0, 97) + '...' : line;
+          keyPhrases.push(clean);
+        }
+      }
+      const unique = [...new Set(keyPhrases)].slice(0, 3);
+      return unique.length > 0 ? unique.join(' \u2192 ') : null;
+    }, [content, isActive]);
+
+    const title = isActive ? 'Thinking...' : `Thought for ${lineCount} lines`;
 
     return e('div', { className: `thinking-bar ${isActive ? 'active' : ''}` },
       e('div', { className: 'thinking-bar-header', onClick: () => setExpanded(!expanded) },
         e('span', { className: `thinking-dot ${isActive ? 'active' : ''}` }),
-        e('span', { className: 'thinking-label' }, summary),
+        e('div', { className: 'thinking-label-group' },
+          e('span', { className: 'thinking-label' }, title),
+          briefSummary && e('span', { className: 'thinking-summary' }, briefSummary)),
         e('span', { className: 'thinking-toggle' }, expanded ? '\u25B2' : '\u25BC')
       ),
       expanded && e('div', { ref, className: 'thinking-bar-content' },
@@ -616,7 +658,7 @@
   }
 
   // ── Single Message ──
-  function Message({ role, content, code, codes, variantLabels, bubbleText, thinkingContent, isStreaming, isThinking, onCopyCode }) {
+  function Message({ role, content, code, codes, variantLabels, bubbleText, thinkingContent, isStreaming, isThinking, onCopyCode, pinnedLabels, library }) {
     const isUser = role === 'user';
     const hasMultiple = !isStreaming && codes && codes.length > 1;
     const hasSingle = !isStreaming && !hasMultiple && code;
@@ -625,12 +667,16 @@
       e('div', { className: 'msg-body' },
         e('div', { className: 'msg-role' }, isUser ? 'You' : 'Project Assistant'),
         isUser
-          ? e('div', { className: 'msg-content' }, content)
+          ? e(React.Fragment, null,
+              pinnedLabels && pinnedLabels.length > 0 && e('div', { className: 'msg-pinned-tags' },
+                e('span', { className: 'msg-pinned-icon' }, '\uD83D\uDCCC'),
+                pinnedLabels.map((label, i) => e('span', { key: i, className: 'msg-pinned-tag' }, label))),
+              e('div', { className: 'msg-content' }, content))
           : e(React.Fragment, null,
               thinkingContent && e(ThinkingBar, { content: thinkingContent, isActive: isThinking || false }),
               e(MarkdownContent, { content: bubbleText || content, isStreaming }),
-              hasMultiple && e(MultiPreview, { codes, labels: variantLabels || [], onCopyCode }),
-              hasSingle && e(InlinePreview, { code, onCopyCode }))
+              hasMultiple && e(MultiPreview, { codes, labels: variantLabels || [], onCopyCode, library }),
+              hasSingle && e(InlinePreview, { code, onCopyCode, library }))
       )
     );
   }
@@ -647,7 +693,7 @@
   }
 
   // ── Input Area ──
-  function InputArea({ onSend, isStreaming, onStop }) {
+  function InputArea({ onSend, isStreaming, onStop, pinnedFiles, onUnpin }) {
     const [input, setInput] = useState('');
     const taRef = useRef(null);
     const adjustH = useCallback(() => {
@@ -663,38 +709,95 @@
     useEffect(() => { if (taRef.current) taRef.current.focus(); }, []);
 
     return e('div', { className: 'input-area' },
+      pinnedFiles && pinnedFiles.length > 0 && e('div', { className: 'pinned-context-bar' },
+        e('span', { className: 'pinned-context-label' }, '\uD83D\uDCCC Context:'),
+        pinnedFiles.map(f => e('span', { key: f.id, className: 'pinned-context-chip' },
+          e('span', { className: 'pinned-chip-name' }, f.label),
+          e('button', { className: 'pinned-chip-remove', title: 'Unpin', onClick: () => onUnpin(f.id) }, '\u2715')
+        ))
+      ),
       e('div', { className: 'input-wrapper' },
         e('div', { className: 'input-box' },
           e('textarea', { ref: taRef, value: input, onChange: ev => setInput(ev.target.value), onKeyDown: kd,
-            placeholder: 'Ask about the project, generate UI, or get help...', rows: 1, disabled: isStreaming }),
+            placeholder: pinnedFiles && pinnedFiles.length > 0
+              ? `Ask about ${pinnedFiles.map(f => f.label).join(', ')}...`
+              : 'Ask about the project, generate UI, or get help...', rows: 1, disabled: isStreaming }),
           isStreaming
             ? e('button', { className: 'stop-btn', title: 'Stop', onClick: onStop }, e('div', { className: 'stop-icon' }))
             : e('button', { className: 'send-btn', title: 'Send', disabled: !input.trim(), onClick: send }, I.send)
         ),
-        e('div', { className: 'input-hint' }, 'Enter to send, Shift+Enter for new line')
+        e('div', { className: 'input-hint' }, pinnedFiles && pinnedFiles.length > 0
+          ? `${pinnedFiles.length} pinned file${pinnedFiles.length > 1 ? 's' : ''} attached as context`
+          : 'Enter to send, Shift+Enter for new line')
       )
     );
   }
 
-  // ── Code Panel (right top) — with folder grouping, context, delete ──
-  function CodePanel({ codeFiles, selectedId, onSelect, onCopy, onDelete, onClearAll }) {
+  // ── Code Panel (right top) — with folder grouping, context, delete, pin ──
+  function CodePanel({ codeFiles, selectedId, onSelect, onCopy, onDelete, onClearAll, onTogglePin, onRename }) {
     const selected = codeFiles.find(f => f.id === selectedId);
 
-    // Group files by conversation/folder
+    const pinnedFiles = useMemo(() => codeFiles.filter(f => f.pinned), [codeFiles]);
+    const unpinnedFiles = useMemo(() => codeFiles.filter(f => !f.pinned), [codeFiles]);
+
     const groups = useMemo(() => {
       const map = {};
-      for (const f of codeFiles) {
+      for (const f of unpinnedFiles) {
         const folder = f.folder || 'Unsorted';
         if (!map[folder]) map[folder] = [];
         map[folder].push(f);
       }
       return map;
-    }, [codeFiles]);
+    }, [unpinnedFiles]);
 
     const [collapsedFolders, setCollapsedFolders] = useState({});
     const toggleFolder = (folder) => setCollapsedFolders(prev => ({ ...prev, [folder]: !prev[folder] }));
+    const [renamingId, setRenamingId] = useState(null);
+    const [renameValue, setRenameValue] = useState('');
+
+    const startRename = (ev, f) => {
+      ev.stopPropagation();
+      setRenamingId(f.id);
+      setRenameValue(f.label);
+    };
+    const commitRename = () => {
+      if (renamingId && renameValue.trim()) onRename(renamingId, renameValue);
+      setRenamingId(null);
+    };
+    const handleRenameKey = (ev) => {
+      if (ev.key === 'Enter') commitRename();
+      if (ev.key === 'Escape') setRenamingId(null);
+    };
 
     const folderNames = Object.keys(groups);
+    const libBadge = (lib) => lib ? e('span', { className: `code-file-lib ${lib}` },
+      lib === 'metafore' ? 'MF' : lib === 'both' ? 'B' : 'UI') : null;
+
+    const renderFileItem = (f) => e('div', {
+      key: f.id,
+      className: `code-file-item ${f.id === selectedId ? 'active' : ''} ${f.pinned ? 'pinned' : ''}`,
+      onClick: () => onSelect(f.id)
+    },
+      e('div', { className: 'code-file-icon' }, I.file),
+      e('div', { className: 'code-file-info' },
+        renamingId === f.id
+          ? e('input', { className: 'code-file-rename-input', value: renameValue,
+              onChange: (ev) => setRenameValue(ev.target.value), onBlur: commitRename,
+              onKeyDown: handleRenameKey, autoFocus: true, onClick: (ev) => ev.stopPropagation() })
+          : e('div', { className: 'code-file-name' }, f.label, libBadge(f.library)),
+        e('div', { className: 'code-file-meta' },
+          e('span', null, f.time),
+          f.context && e('span', { className: 'code-file-context' }, f.context))),
+      e('div', { className: 'code-file-actions' },
+        e('button', { className: 'code-file-rename-btn', title: 'Rename',
+          onClick: (ev) => startRename(ev, f) }, '\u270E'),
+        e('button', {
+          className: `code-file-pin ${f.pinned ? 'pinned' : ''}`,
+          title: f.pinned ? 'Unpin' : 'Pin',
+          onClick: (ev) => { ev.stopPropagation(); onTogglePin(f.id); }
+        }, '\uD83D\uDCCC'),
+        e('button', { className: 'code-file-delete', title: 'Delete', onClick: (ev) => { ev.stopPropagation(); onDelete(f.id); } }, '\u2715'))
+    );
 
     return e('div', { className: 'code-panel' },
       e('div', { className: 'code-panel-header' },
@@ -704,6 +807,12 @@
           codeFiles.length > 0 && e('button', { className: 'code-clear-btn', onClick: onClearAll, title: 'Clear all files' }, 'Clear'))),
       e('div', { className: 'code-panel-body' },
         codeFiles.length === 0 && e('div', { className: 'code-panel-empty' }, 'Code from chat will appear here.'),
+        pinnedFiles.length > 0 && e('div', { className: 'code-pinned-section' },
+          e('div', { className: 'code-pinned-header' },
+            e('span', null, '\uD83D\uDCCC'),
+            e('span', null, 'Pinned'),
+            e('span', { className: 'code-folder-count' }, pinnedFiles.length)),
+          pinnedFiles.map(renderFileItem)),
         folderNames.map(folder => {
           const files = groups[folder];
           const collapsed = collapsedFolders[folder];
@@ -713,15 +822,7 @@
               e('span', { className: 'code-folder-icon' }, '\uD83D\uDCC1'),
               e('span', { className: 'code-folder-name' }, folder),
               e('span', { className: 'code-folder-count' }, files.length)),
-            !collapsed && files.map(f => e('div', { key: f.id, className: `code-file-item ${f.id === selectedId ? 'active' : ''}`, onClick: () => onSelect(f.id) },
-              e('div', { className: 'code-file-icon' }, I.file),
-              e('div', { className: 'code-file-info' },
-                e('div', { className: 'code-file-name' }, f.label),
-                e('div', { className: 'code-file-meta' },
-                  e('span', null, f.time),
-                  f.context && e('span', { className: 'code-file-context' }, f.context))),
-              e('button', { className: 'code-file-delete', title: 'Delete', onClick: (ev) => { ev.stopPropagation(); onDelete(f.id); } }, '\u2715')
-            ))
+            !collapsed && files.map(renderFileItem)
           );
         }),
         selected && e('div', { className: 'code-viewer' },
@@ -736,67 +837,71 @@
   }
 
   // ── Features Panel (right bottom) — Shortcut Tools (all go through chat) ──
-  function FeaturesPanel({ onSendToChat, isStreaming }) {
+  function FeaturesPanel({ onSendToChat, isStreaming, pinnedFiles, selectedLibrary }) {
     const [activeTab, setActiveTab] = useState('actions');
     const [varCount, setVarCount] = useState(2);
     const [varKeywords, setVarKeywords] = useState(['', '', '']);
 
-    // Catalog state
     const [catalog, setCatalog] = useState([]);
     const [catLoading, setCatLoading] = useState(false);
 
+    const [lastFetchedLib, setLastFetchedLib] = useState('');
     useEffect(() => {
-      if (activeTab === 'catalog' && catalog.length === 0) {
+      if (activeTab === 'catalog' && (catalog.length === 0 || lastFetchedLib !== selectedLibrary)) {
         setCatLoading(true);
-        fetch('/api/catalog').then(r => r.json()).then(d => {
+        fetch(`/api/catalog?library=${selectedLibrary || 'untitledui'}`).then(r => r.json()).then(d => {
           setCatalog(d?.catalog?.components || []);
+          setLastFetchedLib(selectedLibrary);
         }).catch(() => {}).finally(() => setCatLoading(false));
       }
-    }, [activeTab]);
+    }, [activeTab, selectedLibrary]);
 
-    const sendAction = (msg) => { if (!isStreaming && onSendToChat) onSendToChat(msg); };
+    const sendAction = (msg, displayText) => { if (!isStreaming && onSendToChat) onSendToChat(msg, displayText); };
 
-    // ── Variant shortcut: builds a chat prompt from keywords ──
+    const hasPinned = pinnedFiles && pinnedFiles.length > 0;
+    const pinRef = hasPinned
+      ? (pinnedFiles.length === 1 ? `the pinned component "${pinnedFiles[0].label}"` : `the pinned components (${pinnedFiles.map(f => f.label).join(', ')})`)
+      : 'the last UI component';
+
     const sendVariants = () => {
       const kw = varKeywords.slice(0, varCount).map(k => k.trim()).filter(Boolean);
       const kwDesc = kw.length > 0
         ? kw.map((k, i) => `Variant ${i + 1}: ${k}`).join('. ')
         : `Variant 1: minimal and clean. Variant 2: bold and colorful` + (varCount >= 3 ? `. Variant 3: playful and rounded` : '');
-      const msg = `Generate ${varCount} different style variants of the last UI component we discussed. ${kwDesc}. Show each variant as a separate jsx code block with a heading. Each must be a complete standalone React component ending with root.render(React.createElement(ComponentName)).`;
-      sendAction(msg);
+      const prompt = `Generate ${varCount} different style variants of ${pinRef}. ${kwDesc}. Show each variant as a separate jsx code block with a heading.`;
+      const display = `Generate ${varCount} variants: ${kwDesc}`;
+      sendAction(prompt, display);
     };
 
-    // Quick action buttons — each must request runnable code
-    const codeRule = ' Output the complete updated React component in a single jsx code block. Must end with root.render(React.createElement(ComponentName)). Keep it compact, under 80 lines. Minimal explanation.';
     const styleActions = [
-      { label: 'Minimal', prompt: 'Redesign the last UI component with a minimal, clean style. Less borders, more whitespace, simpler.' + codeRule },
-      { label: 'Bold', prompt: 'Redesign the last UI component with a bold, vibrant style. Stronger colors, bigger text, more contrast.' + codeRule },
-      { label: 'Playful', prompt: 'Redesign the last UI component with a playful, fun style. Rounded corners, bright colors, friendly feel.' + codeRule },
-      { label: 'Elegant', prompt: 'Redesign the last UI component with an elegant, premium style. Subtle shadows, refined typography, muted tones.' + codeRule },
-      { label: 'Corporate', prompt: 'Redesign the last UI component with a professional corporate style. Clean lines, blue tones, formal layout.' + codeRule },
+      { label: 'Minimal', display: 'Redesign with a minimal, clean style', prompt: `Redesign ${pinRef} with a minimal, clean style. Less borders, more whitespace, simpler.` },
+      { label: 'Bold', display: 'Redesign with a bold, vibrant style', prompt: `Redesign ${pinRef} with a bold, vibrant style. Stronger colors, bigger text, more contrast.` },
+      { label: 'Playful', display: 'Redesign with a playful, fun style', prompt: `Redesign ${pinRef} with a playful, fun style. Rounded corners, bright colors, friendly feel.` },
+      { label: 'Elegant', display: 'Redesign with an elegant, premium style', prompt: `Redesign ${pinRef} with an elegant, premium style. Subtle shadows, refined typography, muted tones.` },
+      { label: 'Corporate', display: 'Redesign with a professional corporate style', prompt: `Redesign ${pinRef} with a professional corporate style. Clean lines, blue tones, formal layout.` },
     ];
 
     const modifyActions = [
-      { label: 'Add Dark Mode', prompt: 'Add dark mode support to the last UI component. Use dark backgrounds, light text, and adjust all colors.' + codeRule },
-      { label: 'Make Responsive', prompt: 'Make the last UI component fully responsive. Add mobile-first breakpoints and stack layout on small screens.' + codeRule },
-      { label: 'Add Animation', prompt: 'Add smooth animations and transitions to the last UI component. Hover effects, fade-ins, subtle motion.' + codeRule },
-      { label: 'Simplify', prompt: 'Simplify the last UI component. Remove unnecessary elements, reduce complexity, keep it clean and functional.' + codeRule },
-      { label: 'Add More Detail', prompt: 'Add more detail and polish to the last UI component. Icons, badges, status indicators, richer layout.' + codeRule },
+      { label: 'Add Dark Mode', display: 'Add dark mode support', prompt: `Add dark mode support to ${pinRef}. Use dark backgrounds, light text, and adjust all colors.` },
+      { label: 'Make Responsive', display: 'Make fully responsive', prompt: `Make ${pinRef} fully responsive. Add mobile-first breakpoints and stack layout on small screens.` },
+      { label: 'Add Animation', display: 'Add smooth animations and transitions', prompt: `Add smooth animations and transitions to ${pinRef}. Hover effects, fade-ins, subtle motion.` },
+      { label: 'Simplify', display: 'Simplify the component', prompt: `Simplify ${pinRef}. Remove unnecessary elements, reduce complexity, keep it clean and functional.` },
+      { label: 'Add More Detail', display: 'Add more detail and polish', prompt: `Add more detail and polish to ${pinRef}. Icons, badges, status indicators, richer layout.` },
     ];
 
     const enhanceActions = [
-      { label: 'Loading States', prompt: 'Add loading/skeleton states to the last UI component. Show shimmer placeholders while data loads.' + codeRule },
-      { label: 'Error Handling', prompt: 'Add error states and validation to the last UI component. Show error messages, red borders, warnings.' + codeRule },
-      { label: 'Hover Effects', prompt: 'Add rich hover effects to the last UI component. Scale, shadow, color changes on interactive elements.' + codeRule },
-      { label: 'Better Spacing', prompt: 'Improve the spacing and alignment of the last UI component. Better padding, margins, and visual rhythm.' + codeRule },
-      { label: 'Add Icons', prompt: 'Add relevant SVG icons to the last UI component to improve visual communication and usability.' + codeRule },
+      { label: 'Loading States', display: 'Add loading/skeleton states', prompt: `Add loading/skeleton states to ${pinRef}. Show shimmer placeholders while data loads.` },
+      { label: 'Error Handling', display: 'Add error states and validation', prompt: `Add error states and validation to ${pinRef}. Show error messages, red borders, warnings.` },
+      { label: 'Hover Effects', display: 'Add rich hover effects', prompt: `Add rich hover effects to ${pinRef}. Scale, shadow, color changes on interactive elements.` },
+      { label: 'Better Spacing', display: 'Improve spacing and alignment', prompt: `Improve the spacing and alignment of ${pinRef}. Better padding, margins, and visual rhythm.` },
+      { label: 'Add Icons', display: 'Add relevant SVG icons', prompt: `Add relevant SVG icons to ${pinRef} to improve visual communication and usability.` },
     ];
 
     const actionBtn = (item) => e('button', {
       key: item.label,
       className: 'shortcut-btn',
       disabled: isStreaming,
-      onClick: () => sendAction(item.prompt),
+      onClick: () => sendAction(item.prompt, item.display),
     }, item.label);
 
     const tabs = [
@@ -813,7 +918,10 @@
 
         // ── Quick Actions Tab ──
         activeTab === 'actions' && e(React.Fragment, null,
-          e('div', { className: 'shortcut-hint' }, 'Shortcuts that modify the last UI through chat. Full conversation memory.'),
+          e('div', { className: 'shortcut-hint' },
+            pinnedFiles && pinnedFiles.length > 0
+              ? `Actions will use ${pinnedFiles.length} pinned file${pinnedFiles.length > 1 ? 's' : ''} as context.`
+              : 'Shortcuts that modify the last UI through chat. Full conversation memory.'),
 
           e('div', { className: 'shortcut-group' },
             e('div', { className: 'shortcut-group-label' }, 'Style'),
@@ -830,7 +938,10 @@
 
         // ── Variants Tab (shortcut — goes through chat) ──
         activeTab === 'variants' && e(React.Fragment, null,
-          e('div', { className: 'shortcut-hint' }, 'Generate style variants of the last UI via chat. Uses full conversation context.'),
+          e('div', { className: 'shortcut-hint' },
+            pinnedFiles && pinnedFiles.length > 0
+              ? `Variants will use ${pinnedFiles.length} pinned file${pinnedFiles.length > 1 ? 's' : ''} as context.`
+              : 'Generate style variants of the last UI via chat. Uses full conversation context.'),
 
           e('div', { className: 'feature-section' },
             e('div', { className: 'feature-row', style: { marginBottom: 8 } },
@@ -895,10 +1006,24 @@
     const [agentStatusText, setAgentStatusText] = useState('');
     const [pipelineVisible, setPipelineVisible] = useState(false);
     const [thinkingContent, setThinkingContent] = useState('');
+    const [selectedLibrary, setSelectedLibrary] = useState('untitledui');
+    const [theme, setTheme] = useState(() => {
+      try { return localStorage.getItem('ds-agent-theme') || 'dark'; } catch { return 'dark'; }
+    });
+
+    useEffect(() => {
+      document.documentElement.setAttribute('data-theme', theme);
+      try { localStorage.setItem('ds-agent-theme', theme); } catch {}
+    }, [theme]);
+
+    const toggleTheme = useCallback(() => {
+      setTheme(prev => prev === 'dark' ? 'light' : 'dark');
+    }, []);
 
     const scrollRef = useRef(null);
     const abortRef = useRef(null);
     const conversationsRef = useRef(conversations);
+    const streamingConvRef = useRef(null);
     const [rightPanelWidth, setRightPanelWidth] = useState(380);
     const resizingRef = useRef(false);
 
@@ -948,14 +1073,25 @@
         time: new Date().toLocaleTimeString(),
         folder: folder || 'Components',
         context: context || null,
+        pinned: false,
+        library: selectedLibrary,
       }, ...prev]);
       setSelectedCodeId(id);
-    }, []);
+    }, [selectedLibrary]);
 
     const deleteCodeFile = useCallback((id) => {
       setCodeFiles(prev => prev.filter(f => f.id !== id));
       if (selectedCodeId === id) setSelectedCodeId(null);
     }, [selectedCodeId]);
+
+    const togglePinFile = useCallback((id) => {
+      setCodeFiles(prev => prev.map(f => f.id === id ? { ...f, pinned: !f.pinned } : f));
+    }, []);
+
+    const renameCodeFile = useCallback((id, newLabel) => {
+      if (!newLabel || !newLabel.trim()) return;
+      setCodeFiles(prev => prev.map(f => f.id === id ? { ...f, label: newLabel.trim() } : f));
+    }, []);
 
     const clearAllCodeFiles = useCallback(() => {
       setCodeFiles([]);
@@ -969,12 +1105,25 @@
     // Conversation management
     const createNewChat = useCallback(() => {
       const id = generateId();
-      setConversations(prev => [{ id, title: 'New conversation', messages: [], createdAt: Date.now(), updatedAt: Date.now() }, ...prev]);
-      setActiveId(id); setIsStreaming(false); setStreamingContent(''); setShowTyping(false);
-    }, []);
+      setConversations(prev => [{ id, title: 'New conversation', messages: [], createdAt: Date.now(), updatedAt: Date.now(), library: selectedLibrary }, ...prev]);
+      setActiveId(id);
+      if (!streamingConvRef.current || streamingConvRef.current !== id) {
+        setIsStreaming(false); setStreamingContent(''); setShowTyping(false);
+        setPipelineVisible(false); setAgentStep(null); setAgentStatusText('');
+        setThinkingContent('');
+      }
+    }, [selectedLibrary]);
 
     const selectConversation = useCallback((id) => {
-      setActiveId(id); setIsStreaming(false); setStreamingContent(''); setShowTyping(false);
+      setActiveId(id);
+      const isThisStreaming = streamingConvRef.current === id;
+      if (!isThisStreaming) {
+        setIsStreaming(false); setStreamingContent(''); setShowTyping(false);
+        setPipelineVisible(false); setAgentStep(null); setAgentStatusText('');
+        setThinkingContent('');
+      }
+      const conv = conversationsRef.current.find(c => c.id === id);
+      if (conv && conv.library) setSelectedLibrary(conv.library);
     }, []);
 
     const deleteConversation = useCallback((id) => {
@@ -985,6 +1134,11 @@
     const updateConversation = useCallback((id, updater) => {
       setConversations(prev => prev.map(c => c.id === id ? { ...c, ...updater(c), updatedAt: Date.now() } : c));
     }, []);
+
+    const changeLibrary = useCallback((lib) => {
+      setSelectedLibrary(lib);
+      if (activeId) updateConversation(activeId, () => ({ library: lib }));
+    }, [activeId, updateConversation]);
 
     // Process assistant message: extract code(s), strip from bubble, name files
     const processAssistantMessage = useCallback((fullContent, userMessage) => {
@@ -1032,18 +1186,31 @@
       return trimmed;
     }
 
-    // Send message
-    const sendMessage = useCallback(async (text) => {
+    const CODE_RULE = ' Output the complete updated React component in a single jsx code block. Must end with root.render(React.createElement(ComponentName)). Keep it compact, under 80 lines. Minimal explanation.';
+
+    // Send message — pinned context + code rules injected into backend payload only
+    const sendMessage = useCallback(async (text, displayText) => {
+      const visibleText = displayText || text;
+      const pinned = codeFiles.filter(f => f.pinned);
+
+      let backendText = text + CODE_RULE;
+      if (pinned.length > 0) {
+        const names = pinned.map(f => f.label).join(', ');
+        const ctx = pinned.map(f => `[Pinned: ${f.label}]\n\`\`\`jsx\n${f.code}\n\`\`\``).join('\n\n');
+        backendText = `IMPORTANT: The user has pinned the following code file(s) as context: ${names}. You MUST use this pinned code as the base component to modify. Do NOT use any other component from conversation history — work ONLY on the pinned code below.\n\n${ctx}\n\nUser request: ${backendText}`;
+      }
+
       let convId = activeId;
       if (!convId) {
         const id = generateId();
-        setConversations(prev => [{ id, title: generateTitle(text), messages: [], createdAt: Date.now(), updatedAt: Date.now() }, ...prev]);
+        setConversations(prev => [{ id, title: generateTitle(visibleText), messages: [], createdAt: Date.now(), updatedAt: Date.now(), library: selectedLibrary }, ...prev]);
         setActiveId(id); convId = id;
       }
 
+      const pinnedLabels = pinned.length > 0 ? pinned.map(f => f.label) : null;
       updateConversation(convId, (c) => ({
-        messages: [...c.messages, { role: 'user', content: text }],
-        title: c.messages.length === 0 ? generateTitle(text) : c.title,
+        messages: [...c.messages, { role: 'user', content: visibleText, pinnedLabels }],
+        title: c.messages.length === 0 ? generateTitle(visibleText) : c.title,
       }));
 
       // Use ref for latest state to avoid stale closure
@@ -1054,7 +1221,7 @@
       // IMPORTANT: Keep the LAST assistant message's full content (with code blocks)
       // so the pipeline's _get_previous_code() can find the original component.
       // Only trim OLDER assistant messages to save tokens.
-      const rawHistory = [...allMsgs, { role: 'user', content: text }].slice(-20);
+      const rawHistory = [...allMsgs, { role: 'user', content: visibleText }].slice(-20);
       let lastAssistantIdx = -1;
       for (let i = rawHistory.length - 1; i >= 0; i--) {
         if (rawHistory[i].role === 'assistant') { lastAssistantIdx = i; break; }
@@ -1069,33 +1236,37 @@
       setShowTyping(true); setStreamingContent(''); setIsStreaming(true);
       setAgentStep(null); setAgentStatusText(''); setPipelineVisible(true);
       setThinkingContent('');
+      streamingConvRef.current = convId;
       const controller = new AbortController();
       abortRef.current = controller;
       let fullContent = '';
       let fullThinking = '';
       let firstChunk = true;
 
-      await streamChat(text, history,
+      await streamChat(backendText, history,
         (chunk) => {
           if (firstChunk) { setShowTyping(false); firstChunk = false; }
           fullContent += chunk;
           setStreamingContent(fullContent);
         },
         () => {
+          streamingConvRef.current = null;
           setIsStreaming(false); setShowTyping(false); setStreamingContent('');
           setPipelineVisible(false); setAgentStep(null); setAgentStatusText('');
           setThinkingContent('');
           if (fullContent) {
-            const { bubbleText, code, codes, variantLabels } = processAssistantMessage(fullContent, text);
+            const { bubbleText, code, codes, variantLabels } = processAssistantMessage(fullContent, visibleText);
             updateConversation(convId, (c) => ({
               messages: [...c.messages, {
                 role: 'assistant', content: fullContent, bubbleText, code, codes, variantLabels,
                 thinkingContent: fullThinking || null,
+                library: selectedLibrary,
               }],
             }));
           }
         },
         (error) => {
+          streamingConvRef.current = null;
           setIsStreaming(false); setShowTyping(false); setStreamingContent('');
           setPipelineVisible(false); setAgentStep(null); setAgentStatusText('');
           setThinkingContent('');
@@ -1113,9 +1284,11 @@
         (thinkingChunk) => {
           fullThinking += thinkingChunk;
           setThinkingContent(fullThinking);
-        }
+        },
+        text,
+        selectedLibrary
       );
-    }, [activeId, conversations, updateConversation, addToast, processAssistantMessage]);
+    }, [activeId, conversations, updateConversation, addToast, processAssistantMessage, codeFiles, selectedLibrary]);
 
     const stopStreaming = useCallback(() => { if (abortRef.current) { abortRef.current.abort(); abortRef.current = null; } }, []);
 
@@ -1141,7 +1314,8 @@
     return e('div', { className: 'app-layout' },
       // Sidebar
       e(Sidebar, { conversations, activeId, onSelect: selectConversation, onNewChat: createNewChat,
-        onDelete: deleteConversation, isOpen: sidebarOpen, onClose: () => setSidebarOpen(false) }),
+        onDelete: deleteConversation, isOpen: sidebarOpen, onClose: () => setSidebarOpen(false),
+        selectedLibrary, onLibraryChange: changeLibrary, theme, onToggleTheme: toggleTheme }),
 
       // Chat main
       e('div', { className: 'chat-main' },
@@ -1165,12 +1339,15 @@
                   content: m.content, bubbleText: m.bubbleText, code: m.code,
                   codes: m.codes, variantLabels: m.variantLabels,
                   thinkingContent: m.thinkingContent,
+                  pinnedLabels: m.pinnedLabels,
+                  library: m.library || selectedLibrary,
                   onCopyCode: copyCode })),
                 isStreaming && !showTyping && (streamingContent || thinkingContent) && e(Message, { key: 'streaming',
                   role: 'assistant', content: streamingContent || '',
                   bubbleText: streamingContent ? streamingBubble : (thinkingContent ? '' : ''),
                   code: null, isStreaming: true, isThinking: !!thinkingContent && !streamingContent,
                   thinkingContent: thinkingContent || null,
+                  library: selectedLibrary,
                   onCopyCode: copyCode }),
                 showTyping && e(TypingIndicator, { key: 'typing' }),
                 e('div', { style: { height: 16 } })
@@ -1178,7 +1355,8 @@
         ),
 
         // Input
-        e(InputArea, { onSend: sendMessage, isStreaming, onStop: stopStreaming })
+        e(InputArea, { onSend: sendMessage, isStreaming, onStop: stopStreaming,
+          pinnedFiles: codeFiles.filter(f => f.pinned), onUnpin: togglePinFile })
       ),
 
       // Resize handle (draggable)
@@ -1187,8 +1365,8 @@
       // Right Panel
       e('div', { className: `right-panel ${rightPanelOpen ? '' : 'closed'}`,
         style: rightPanelOpen ? { width: rightPanelWidth, minWidth: rightPanelWidth } : undefined },
-        e(CodePanel, { codeFiles, selectedId: selectedCodeId, onSelect: setSelectedCodeId, onCopy: copyCode, onDelete: deleteCodeFile, onClearAll: clearAllCodeFiles }),
-        e(FeaturesPanel, { onSendToChat: sendMessage, isStreaming })
+        e(CodePanel, { codeFiles, selectedId: selectedCodeId, onSelect: setSelectedCodeId, onCopy: copyCode, onDelete: deleteCodeFile, onClearAll: clearAllCodeFiles, onTogglePin: togglePinFile, onRename: renameCodeFile }),
+        e(FeaturesPanel, { onSendToChat: sendMessage, isStreaming, pinnedFiles: codeFiles.filter(f => f.pinned), selectedLibrary })
       ),
 
       e(ToastContainer, { toasts, onDismiss: dismissToast })

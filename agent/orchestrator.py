@@ -23,7 +23,7 @@ from langgraph.graph.message import add_messages
 
 from agent.discovery import run_discovery
 from agent.generator import run_generation
-from agent.tools import verify_quality, check_accessibility
+from agent.tools import verify_quality, check_accessibility, set_active_library
 
 logger = logging.getLogger(__name__)
 
@@ -43,6 +43,7 @@ class OrchestratorState(TypedDict):
     generated_code: str
     qa_result: str
     retry_count: int
+    library: str
 
 
 # ────────────── Helpers ──────────────
@@ -118,6 +119,7 @@ def _get_fast_model():
 async def classify_node(state: OrchestratorState) -> dict:
     """Analyze the user's request and decide the workflow.
     Skips the LLM call if workflow is already pre-classified."""
+    set_active_library(state.get("library", "untitledui"))
     user_msg = _get_last_user_message(state)
 
     if state.get("workflow"):
@@ -169,8 +171,9 @@ async def discovery_node(state: OrchestratorState) -> dict:
     """Run fast component discovery (single LLM call, no ReAct loops)."""
     user_msg = state.get("user_request") or _get_last_user_message(state)
     previous_code = _get_previous_code(state)
+    library = state.get("library", "untitledui")
 
-    result = await run_discovery(user_msg, has_previous_code=bool(previous_code))
+    result = await run_discovery(user_msg, has_previous_code=bool(previous_code), library=library)
     return {"discovery_output": result}
 
 
@@ -184,11 +187,13 @@ async def generation_node(state: OrchestratorState) -> dict:
     qa_feedback = state.get("qa_result", "") if state.get("retry_count", 0) > 0 else ""
     previous_code = _get_previous_code(state)
 
+    library = state.get("library", "untitledui")
     result = await run_generation(
         user_request=user_msg,
         discovery_output=discovery,
         previous_code=previous_code,
         qa_feedback=qa_feedback,
+        library=library,
     )
 
     # For variant requests, preserve the full response with all code blocks + headings
@@ -301,19 +306,22 @@ async def respond_node(state: OrchestratorState) -> dict:
         model = _get_fast_model()
         user_msg = _get_last_user_message(state)
         history_msgs = _get_conversation_summary(state, max_turns=10)
+        library = state.get("library", "untitledui")
+        lib_label = {"untitledui": "Untitled UI", "metafore": "Metafore", "vernam": "Vernam", "both": "Untitled UI + Metafore"}.get(library, library)
 
         llm_messages = [
             SystemMessage(content=(
-                "You are a helpful assistant for the Milestone 1 Design System Agent project. "
-                "Answer questions about the Untitled UI component library, design tokens, "
-                "and the multi-agent architecture. Be concise and helpful."
+                f"You are a helpful assistant for the Milestone 1 Design System Agent project. "
+                f"The active design system library is: {lib_label}. "
+                f"Answer questions about the component library, design tokens, "
+                f"and the multi-agent architecture. Be concise and helpful."
             )),
         ]
 
         # RAG: inject relevant design system context
         try:
             from agent.rag import query as rag_query
-            rag_context = rag_query(user_msg, k=3)
+            rag_context = rag_query(user_msg, k=3, library=library)
             if rag_context:
                 llm_messages.append(
                     SystemMessage(content=f"## Relevant Design System Context\n{rag_context}")

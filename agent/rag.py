@@ -25,23 +25,33 @@ ROOT = Path(__file__).resolve().parent.parent
 DESIGN_SYSTEM_DIR = ROOT / "design_system"
 CACHE_DIR = DESIGN_SYSTEM_DIR / ".rag_cache"
 
-_SOURCE_FILES = [
-    DESIGN_SYSTEM_DIR / "catalog.json",
-    DESIGN_SYSTEM_DIR / "tokens.json",
+_LIB_FILES = {
+    "untitledui": {"catalog": "catalog.json", "tokens": "tokens.json"},
+    "metafore": {"catalog": "metafore_catalog.json", "tokens": "metafore_tokens.json"},
+}
+
+_COMMON_FILES = [
     ROOT / "PROJECT_CONTEXT.md",
     ROOT / "coding_guidelines.md",
 ]
 
-# In-memory store
-_chunks: list[dict] = []
-_embeddings: np.ndarray | None = None
-_last_fingerprint: str | None = None
+# Per-library in-memory stores
+_stores: dict[str, dict] = {}  # {lib: {"chunks": [...], "embeddings": ndarray, "fingerprint": str}}
 
 
-def _fingerprint() -> str:
+def _fingerprint(library: str = "untitledui") -> str:
     """Hash of source file mtimes — changes when any source file is modified."""
     parts = []
-    for f in _SOURCE_FILES:
+    libs = list(_LIB_FILES.keys()) if library == "both" else [library if library in _LIB_FILES else "untitledui"]
+    for lib in libs:
+        files = _LIB_FILES[lib]
+        for fname in files.values():
+            f = DESIGN_SYSTEM_DIR / fname
+            try:
+                parts.append(f"{f.name}:{f.stat().st_mtime_ns}")
+            except OSError:
+                parts.append(f"{f.name}:missing")
+    for f in _COMMON_FILES:
         try:
             parts.append(f"{f.name}:{f.stat().st_mtime_ns}")
         except OSError:
@@ -49,9 +59,18 @@ def _fingerprint() -> str:
     return hashlib.md5("|".join(parts).encode()).hexdigest()
 
 
-def _chunk_catalog() -> list[dict]:
-    """Create one chunk per component from catalog.json."""
-    path = DESIGN_SYSTEM_DIR / "catalog.json"
+def _chunk_catalog(library: str = "untitledui") -> list[dict]:
+    """Create one chunk per component from the catalog JSON for the given library."""
+    libs = list(_LIB_FILES.keys()) if library == "both" else [library if library in _LIB_FILES else "untitledui"]
+    all_chunks = []
+    for lib in libs:
+        fname = _LIB_FILES[lib]["catalog"]
+        all_chunks.extend(_chunk_single_catalog(DESIGN_SYSTEM_DIR / fname, lib))
+    return all_chunks
+
+
+def _chunk_single_catalog(path: Path, lib_name: str) -> list[dict]:
+    """Create chunks from a single catalog JSON file."""
     if not path.exists():
         return []
     with open(path, encoding="utf-8") as f:
@@ -71,64 +90,67 @@ def _chunk_catalog() -> list[dict]:
             )
 
         text = (
-            f"Component: {name}\n"
+            f"Component ({lib_name}): {name}\n"
             f"Description: {desc}\n"
             f"Props: {props}\n"
             f"Tailwind Pattern: {pattern}"
             f"{variants_str}"
         )
         chunks.append({
-            "id": f"component-{name.lower()}",
+            "id": f"{lib_name}-component-{name.lower()}",
             "text": text,
-            "metadata": {"source": "catalog.json", "type": "component", "name": name},
+            "metadata": {"source": path.name, "type": "component", "name": name, "library": lib_name},
         })
 
     layouts = data.get("layout_patterns", {})
     if layouts:
-        text = "Layout Patterns:\n" + "\n".join(
+        text = f"Layout Patterns ({lib_name}):\n" + "\n".join(
             f"- {k}: {v}" for k, v in layouts.items()
         )
         chunks.append({
-            "id": "layout-patterns",
+            "id": f"{lib_name}-layout-patterns",
             "text": text,
-            "metadata": {"source": "catalog.json", "type": "layout"},
+            "metadata": {"source": path.name, "type": "layout", "library": lib_name},
         })
 
     icons = data.get("icon_patterns", {})
     if icons:
-        text = "Icon Patterns (inline SVG, stroke-based):\n" + "\n".join(
+        text = f"Icon Patterns ({lib_name}, inline SVG, stroke-based):\n" + "\n".join(
             f"- {k}: {v}" for k, v in icons.items()
         )
         chunks.append({
-            "id": "icon-patterns",
+            "id": f"{lib_name}-icon-patterns",
             "text": text,
-            "metadata": {"source": "catalog.json", "type": "icons"},
+            "metadata": {"source": path.name, "type": "icons", "library": lib_name},
         })
 
     return chunks
 
 
-def _chunk_tokens() -> list[dict]:
-    """Create chunks from tokens.json grouped by category."""
-    path = DESIGN_SYSTEM_DIR / "tokens.json"
-    if not path.exists():
-        return []
-    with open(path, encoding="utf-8") as f:
-        data = json.load(f)
-
-    chunks = []
-    categories = ["colors", "typography", "spacing", "radius", "shadows", "tailwindMapping"]
-    for cat in categories:
-        val = data.get(cat)
-        if not val:
+def _chunk_tokens(library: str = "untitledui") -> list[dict]:
+    """Create chunks from tokens JSON grouped by category."""
+    libs = list(_LIB_FILES.keys()) if library == "both" else [library if library in _LIB_FILES else "untitledui"]
+    all_chunks = []
+    for lib in libs:
+        fname = _LIB_FILES[lib]["tokens"]
+        path = DESIGN_SYSTEM_DIR / fname
+        if not path.exists():
             continue
-        text = f"Design Tokens — {cat}:\n{json.dumps(val, indent=2)}"
-        chunks.append({
-            "id": f"tokens-{cat}",
-            "text": text,
-            "metadata": {"source": "tokens.json", "type": "tokens", "category": cat},
-        })
-    return chunks
+        with open(path, encoding="utf-8") as f:
+            data = json.load(f)
+
+        categories = ["colors", "typography", "spacing", "radius", "shadows", "tailwindMapping"]
+        for cat in categories:
+            val = data.get(cat)
+            if not val:
+                continue
+            text = f"Design Tokens ({lib}) — {cat}:\n{json.dumps(val, indent=2)}"
+            all_chunks.append({
+                "id": f"{lib}-tokens-{cat}",
+                "text": text,
+                "metadata": {"source": fname, "type": "tokens", "category": cat, "library": lib},
+            })
+    return all_chunks
 
 
 def _chunk_markdown(file_path: Path, source_name: str) -> list[dict]:
@@ -156,11 +178,11 @@ def _chunk_markdown(file_path: Path, source_name: str) -> list[dict]:
     return chunks
 
 
-def _build_all_chunks() -> list[dict]:
-    """Collect all chunks from all sources."""
+def _build_all_chunks(library: str = "untitledui") -> list[dict]:
+    """Collect all chunks from all sources for the given library."""
     chunks = []
-    chunks.extend(_chunk_catalog())
-    chunks.extend(_chunk_tokens())
+    chunks.extend(_chunk_catalog(library))
+    chunks.extend(_chunk_tokens(library))
     chunks.extend(_chunk_markdown(ROOT / "PROJECT_CONTEXT.md", "PROJECT_CONTEXT.md"))
     chunks.extend(_chunk_markdown(ROOT / "coding_guidelines.md", "coding_guidelines.md"))
     return chunks
@@ -199,82 +221,77 @@ def _cosine_similarity(query_vec: np.ndarray, doc_vecs: np.ndarray) -> np.ndarra
     return doc_norms @ query_norm
 
 
-def build_index(force: bool = False) -> None:
+def build_index(force: bool = False, library: str = "untitledui") -> None:
     """Build or rebuild the in-memory vector index from source files.
 
     Skips rebuild if source files haven't changed (unless force=True).
     Caches embeddings to disk to avoid re-embedding on restart.
     """
-    global _chunks, _embeddings, _last_fingerprint
+    store = _stores.get(library, {})
+    fp = _fingerprint(library)
 
-    fp = _fingerprint()
-    if not force and _embeddings is not None and _last_fingerprint == fp:
+    if not force and store.get("embeddings") is not None and store.get("fingerprint") == fp:
         return
 
-    chunks = _build_all_chunks()
+    chunks = _build_all_chunks(library)
     if not chunks:
         return
 
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
-    cache_emb = CACHE_DIR / f"embeddings_{fp}.npy"
-    cache_ids = CACHE_DIR / f"chunk_ids_{fp}.json"
+    cache_emb = CACHE_DIR / f"embeddings_{library}_{fp}.npy"
+    cache_ids = CACHE_DIR / f"chunk_ids_{library}_{fp}.json"
 
-    # Try loading from cache
     if cache_emb.exists() and cache_ids.exists():
         try:
             cached_ids = json.loads(cache_ids.read_text(encoding="utf-8"))
             current_ids = [c["id"] for c in chunks]
             if cached_ids == current_ids:
-                _embeddings = np.load(str(cache_emb))
-                _chunks = chunks
-                _last_fingerprint = fp
-                logger.info("[RAG] Loaded %d cached embeddings", len(chunks))
+                _stores[library] = {
+                    "chunks": chunks,
+                    "embeddings": np.load(str(cache_emb)),
+                    "fingerprint": fp,
+                }
+                logger.info("[RAG] Loaded %d cached embeddings for %s", len(chunks), library)
                 return
         except Exception:
             pass
 
-    # Embed all chunks
     texts = [c["text"] for c in chunks]
-    logger.info("[RAG] Embedding %d chunks...", len(texts))
-    _embeddings = _get_embeddings(texts)
-    _chunks = chunks
-    _last_fingerprint = fp
+    logger.info("[RAG] Embedding %d chunks for %s...", len(texts), library)
+    embeddings = _get_embeddings(texts)
+    _stores[library] = {"chunks": chunks, "embeddings": embeddings, "fingerprint": fp}
 
-    # Cache to disk
     try:
-        np.save(str(cache_emb), _embeddings)
+        np.save(str(cache_emb), embeddings)
         cache_ids.write_text(json.dumps([c["id"] for c in chunks]), encoding="utf-8")
-        # Clean old cache files
-        for f in CACHE_DIR.glob("embeddings_*.npy"):
-            if f.name != cache_emb.name:
-                f.unlink(missing_ok=True)
-        for f in CACHE_DIR.glob("chunk_ids_*.json"):
-            if f.name != cache_ids.name:
-                f.unlink(missing_ok=True)
     except Exception:
         pass
 
-    logger.info("[RAG] Indexed %d chunks (in-memory + cached to disk)", len(chunks))
+    logger.info("[RAG] Indexed %d chunks for %s (in-memory + cached)", len(chunks), library)
 
 
-def query(text: str, k: int = 3) -> str:
+def query(text: str, k: int = 3, library: str = "untitledui") -> str:
     """Query the RAG index and return the top-k relevant chunks as formatted text.
 
     Auto-builds the index if needed. Returns an empty string on failure.
     """
     try:
-        build_index()
+        build_index(library=library)
     except Exception as e:
         logger.warning("[RAG] Index build failed: %s", e)
         return ""
 
-    if _embeddings is None or not _chunks:
+    store = _stores.get(library, {})
+    embeddings = store.get("embeddings")
+    chunks = store.get("chunks", [])
+
+    if embeddings is None or not chunks:
         return ""
 
     try:
         query_emb = _get_embeddings([text])[0]
-        scores = _cosine_similarity(query_emb, _embeddings)
-        top_indices = np.argsort(scores)[::-1][:min(k, len(_chunks))]
+        scores = _cosine_similarity(query_emb, embeddings)
+        top_indices = np.argsort(scores)[::-1][:min(k, len(chunks))]
     except Exception as e:
         logger.warning("[RAG] Query failed: %s", e)
         return ""
@@ -283,6 +300,6 @@ def query(text: str, k: int = 3) -> str:
     for i, idx in enumerate(top_indices, 1):
         if scores[idx] < 0.1:
             continue
-        parts.append(f"--- Context {i} ---\n{_chunks[idx]['text']}")
+        parts.append(f"--- Context {i} ---\n{chunks[idx]['text']}")
 
     return "\n\n".join(parts)

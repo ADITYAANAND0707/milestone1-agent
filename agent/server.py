@@ -49,7 +49,7 @@ def _prepare_history(history: list | None) -> list:
     return messages
 
 
-def _build_initial_state(messages: list, message: str, workflow: str) -> dict:
+def _build_initial_state(messages: list, message: str, workflow: str, library: str = "untitledui") -> dict:
     """Build the initial orchestrator state dict."""
     return {
         "messages": messages,
@@ -59,6 +59,7 @@ def _build_initial_state(messages: list, message: str, workflow: str) -> dict:
         "generated_code": "",
         "qa_result": "",
         "retry_count": 0,
+        "library": library,
     }
 
 
@@ -87,7 +88,7 @@ async def run_agent(message: str, history: list = None, workflow: str = "") -> s
     return "No response generated."
 
 
-async def run_agent_stream(message: str, history: list = None, workflow: str = ""):
+async def run_agent_stream(message: str, history: list = None, workflow: str = "", library: str = "untitledui"):
     """Run the multi-agent orchestrator and yield SSE chunks.
 
     Streams LLM tokens in real-time during generation and respond nodes.
@@ -96,6 +97,7 @@ async def run_agent_stream(message: str, history: list = None, workflow: str = "
         message: User's message
         history: Conversation history
         workflow: Pre-classified workflow to skip classify LLM call
+        library: Design system library (untitledui, metafore, both)
 
     Yields:
         dict with {"type": "status"|"chunk"|"done"|"error", ...}
@@ -105,7 +107,7 @@ async def run_agent_stream(message: str, history: list = None, workflow: str = "
     messages = _prepare_history(history)
     messages.append(HumanMessage(content=message))
 
-    initial_state = _build_initial_state(messages, message, workflow)
+    initial_state = _build_initial_state(messages, message, workflow, library=library)
 
     status_labels = {
         "classify": "Analyzing your request...",

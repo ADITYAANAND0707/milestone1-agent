@@ -1,0 +1,22 @@
+I'm going to attach several markdown files that describe a 5-week delivery plan for integrating a "Maker" platform with our widget generation service and a hostable MCP server for the component library.
+
+**What I need from you:**
+
+1. **One professional document** that merges the content of all attached files into a single, well-structured document suitable for both technical and non-technical readers (product, design, engineering, leadership). Keep it to the point: no fluff, clear sections, tables where helpful.
+
+2. **Suggested structure:**
+   - Executive summary / at a glance
+   - What we're building (plain language)
+   - How it works (flow + architecture)
+   - 5-week timeline with weekly and Week 1 day-by-day detail
+   - Who does what (RACI / two-person split)
+   - Contract v0 (API request/response summary)
+   - MCP scope and hostable requirements
+   - Success criteria and risks
+   - References and glossary
+
+3. **Tone:** Professional, concise, consistent terminology (Maker, Widget Manifest, contract v0, MCP server, Person A / Person B, library param untitledui/metafore/both).
+
+4. **Optional:** At the end, give me a short "prompt" I can reuse with another LLM or new chat to regenerate or update this document from the same source files.
+
+Please use the attached files as the single source of truth; do not invent new deliverables or dates.
